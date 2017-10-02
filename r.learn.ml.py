@@ -558,7 +558,8 @@ def main():
         gs.fatal('No attribute column specified for training points')
 
     # check that valid combination of training data input is present
-    if trainingpoints == '' and trainingmap == '' and load_training == '':
+    if trainingpoints == '' and trainingmap == '' and load_training == '' \
+    and model_load =='':
         gs.fatal('No training vector, raster or tabular data is present')
 
     # make dicts for hyperparameters, datatypes and parameters for tuning
@@ -911,7 +912,7 @@ def main():
         # load a previously fitted train object
         if model_load != '':
             # load a previously fitted model
-            clf = joblib.load(model_load)
+            X, y, sample_coords, groups, clf = joblib.load(model_load)
 
     # Optionally save the fitted model
     if model_save != '':
@@ -928,22 +929,23 @@ def main():
         if prob_only is False:
             gs.message('Predicting classification/regression raster...')
             predict(estimator=clf, predictors=maplist, output=output,
-                    predict_type='raw', n_jobs=n_jobs, overwrite=gs.overwrite)
+                    predict_type='raw', overwrite=gs.overwrite(),
+                    n_jobs=n_jobs)
 
             if predict_resamples is True:
                 for i in range(cv):
                     resample_name = output + '_Resample' + str(i)
                     predict(estimator=models[i], predictors=maplist,
                             output=resample_name, predict_type='raw',
-                            n_jobs=n_jobs, overwrite=gs.overwrite)
+                            overwrite=gs.overwrite(), n_jobs=n_jobs)
 
         # predict class probabilities
         if probability is True:
             gs.message('Predicting class probabilities...')
             predict(estimator=clf, predictors=maplist, output=output,
                     predict_type='prob', index=indexes,
-                    class_labels=np.unique(y), n_jobs=n_jobs,
-                    overwrite=gs.overwrite)
+                    class_labels=np.unique(y), overwrite=gs.overwrite(),
+                    n_jobs=n_jobs)
 
             if predict_resamples is True:
                 for i in range(cv):
@@ -951,7 +953,7 @@ def main():
                     predict(estimator=models[i], predictors=maplist,
                             output=resample_name, predict_type='prob',
                             class_labels=np.unique(y), index=indexes,
-                            n_jobs=n_jobs, overwrite=gs.overwrite)
+                            overwrite=gs.overwrite(), n_jobs=n_jobs)
     else:
         gs.message("Model built and now exiting")
 

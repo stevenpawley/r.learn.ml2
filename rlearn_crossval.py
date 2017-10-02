@@ -17,17 +17,20 @@ import grass.script as gs
 
 def specificity_score(y_true, y_pred):
     """
+
     Calculate specificity score
 
     Args
     ----
-    y_true: 1D numpy array of truth values
-    y_pred: 1D numpy array of predicted classes
+    y_true (1d numpy array): true values of class labels
+    y_pred (1d numpy array): predicted class labels
 
     Returns
     -------
-    specificity: specificity score
+    specificity (float): specificity score
+
     """
+
     from sklearn.metrics import confusion_matrix
 
     cm = confusion_matrix(y_true, y_pred)
@@ -40,6 +43,7 @@ def specificity_score(y_true, y_pred):
 def varimp_permutation(estimator, X, y, n_permutations, scorer,
                        n_jobs, random_state):
     """
+
     Method to perform permutation-based feature importance during
     cross-validation (cross-validation is applied externally to this
     method)
@@ -54,16 +58,17 @@ def varimp_permutation(estimator, X, y, n_permutations, scorer,
 
     Args
     ----
-    estimator: estimator that has been fitted to a training partition
-    X, y: data and labels from a test partition
-    n_permutations: number of random permutations to apply
-    scorer: scikit-learn metric function to use
-    n_jobs: integer, number of processing cores
-    random_state: seed to pass to the numpy random.seed
+    estimator (object): estimator that has been fitted to a training partition
+    X, y: 2d and 1d numpy arrays of data and labels from a test partition
+    n_permutations (integer): number of random permutations to apply
+    scorer (object): scikit-learn metric function to use
+    n_jobs (integer): integer, number of processing cores
+    random_state (float): seed to pass to the numpy random.seed
 
     Returns
     -------
-    scores: scores for each predictor following permutation
+    scores (2d numpy array): scores for each predictor following permutation
+
     """
 
     from sklearn.externals.joblib import Parallel, delayed
@@ -88,19 +93,21 @@ def varimp_permutation(estimator, X, y, n_permutations, scorer,
 
 def __permute(estimator, X, y, best_score, scorer, random_state):
     """
+
     Permute each predictor and measure difference from best score
 
     Args
     ----
-    estimator: scikit learn estimator
-    X, y: data and labels from a test partition
-    best_score: best scorer obtained on unperturbed data
-    scorer: scoring method to use to measure importances
-    random_state: random seed
+    estimator (object): scikit learn estimator
+    X, y: 2d and 1d numpy arrays data and labels from a test partition
+    best_score (float): best scorer obtained on unperturbed data
+    scorer (object): scoring method to use to measure importances
+    random_state (float): random seed
 
     Returns
     -------
-    scores: 2D numpy array of scores for each predictor following permutation
+    scores (2D numpy array): scores for each predictor following permutation
+
     """
 
     rstate = RandomState(random_state)
@@ -123,16 +130,19 @@ def __permute(estimator, X, y, best_score, scorer, random_state):
 
 def __parallel_fit(estimator, X, y, groups, train_indices, test_indices, sample_weight):
     """
+
     Fit classifiers/regressors in parallel
 
     Args
     ----
-    estimator: scikit learn estimator
+    estimator (object): scikit learn estimator
     X, y: 2D and 1D numpy arrays of training data and labels
-    groups: 1D numpy array of len(y) containing group labels
-    train_indices, test_indices: 1D numpy arrays of indices to use for training/validation
-    sample_weight: 1D numpy array of len(y) containing weights to use during fitting
-                    applied only to XGBoost and Gradient Boosting classifiers
+    groups (1D numpy array): of len(y) containing group labels
+    train_indices, test_indices: 1D numpy arrays of indices to use for
+        training/validation
+    sample_weight (1D numpy array): of len(y) containing weights to use during
+        fitting applied only to XGBoost and Gradient Boosting classifiers
+
     """
 
     # create training and test folds
@@ -159,28 +169,31 @@ def cross_val_scores(estimator, X, y, groups=None, sample_weight=None, cv=3,
                      scoring='accuracy', feature_importances=False,
                      n_permutations=25, random_state=None, n_jobs=-1):
     """
+
     Stratified Kfold and GroupFold cross-validation using multiple
     scoring metrics and permutation feature importances
 
     Args
     ----
-    estimator: Scikit learn estimator
+    estimator (object): Scikit learn estimator
     X, y: 2D and 1D numpy array of training data and labels
-    groups: 1D numpy array containing group labels
-    sample_weight: 1D numpy array[n_samples,] of sample weights
-    cv: Integer of cross-validation folds or sklearn.model_selection object
-    scoring: List of performance metrics to use
-    feature_importances: Boolean to perform permutation-based importances
-    n_permutations: Number of permutations during feature importance
-    random_state: Seed to pass to the random number generator
+    groups (1D numpy array): group labels
+    sample_weight (1D numpy array[n_samples,]): sample weights per sample
+    cv (integer or object): Number of cross-validation folds or
+        sklearn.model_selection object
+    scoring (list): List of performance metrics to use
+    feature_importances (boolean): option to perform permutation-based importances
+    n_permutations (integer): Number of permutations during feature importance
+    random_state (float): Seed to pass to the random number generator
 
     Returns
     -------
-    scores: Dict, containing lists of scores per cross-validation fold
-    byclass_scores: Dict, containing scores per class
-    fimp: 2D numpy array of permutation feature importances per feature
-    clf_resamples: List, fitted estimators
-    predictions: 2D numpy array with y_true, y_pred, fold
+    scores (dict): Containing lists of scores per cross-validation fold
+    byclass_scores (dict): Containing scores per class
+    fimp (2D numpy array): permutation feature importances per feature
+    clf_resamples (list): List of fitted estimators
+    predictions (2d numpy array): with y_true, y_pred, fold
+
     """
 
     from sklearn import metrics

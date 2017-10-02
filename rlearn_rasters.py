@@ -19,21 +19,23 @@ from grass.pygrass.utils import get_raster_for_points, pixel2coor
 
 def extract_pixels(response, predictors, lowmem=False, na_rm=False):
     """
+
     Samples a list of GRASS rasters using a labelled raster
     Per raster sampling
 
     Args
     ----
-    response: String; GRASS raster with labelled pixels
-    predictors: List of GRASS rasters containing explanatory variables
-    lowmem: Boolean, use numpy memmap to query predictors
-    na_rm: Boolean, remove samples containing NaNs
+    response (string): Name of GRASS raster with labelled pixels
+    predictors (list): List of GRASS raster names containing explanatory variables
+    lowmem (boolean): Use numpy memmap to query predictors
+    na_rm (boolean): Remove samples containing NaNs
 
     Returns
     -------
-    training_data: Numpy array of extracted raster values
-    training_labels: Numpy array of labels
-    is_train: Row and Columns of label positions
+    training_data (2d numpy array): Extracted raster values
+    training_labels (1d numpy array): Numpy array of labels
+    is_train (2d numpy array): Row and Columns of label positions
+
     """
 
     current = Region()
@@ -120,21 +122,24 @@ def extract_pixels(response, predictors, lowmem=False, na_rm=False):
 
 def extract_points(gvector, grasters, field, na_rm=False):
     """
+
     Extract values from grass rasters using vector points input
 
     Args
     ----
-    gvector: character, name of grass points vector
-    grasters: list of names of grass raster to query
-    field: character, name of field in table to use as response variable
-    na_rm: Boolean, remove samples containing NaNs
+    gvector (string): Name of grass points vector
+    grasters (list): Names of grass raster to query
+    field (string): Name of field in table to use as response variable
+    na_rm (boolean): Remove samples containing NaNs
 
     Returns
     -------
-    X: 2D numpy array of training data
-    y: 1D numpy array with the response variable
-    coordinates: 2D numpy array of sample coordinates
+    X (2d numpy array): Training data
+    y (1d numpy array): Array with the response variable
+    coordinates (2d numpy array): Sample coordinates
+
     """
+
     # open grass vector
     points = VectorTopo(gvector.split('@')[0])
     points.open('r')
@@ -183,24 +188,35 @@ def extract_points(gvector, grasters, field, na_rm=False):
 
 
 def predict(estimator, predictors, output, predict_type='raw', index=None,
-            class_labels=None, n_jobs=-2, overwrite=False):
+            class_labels=None, overwrite=False, n_jobs=-2):
     """
+
     Prediction on list of GRASS rasters using a fitted scikit learn model
 
     Args
     ----
-    estimator: scikit-learn estimator object
-    predictors: list of GRASS rasters
-    output: Name of GRASS raster to output classification results
-    predict_type: character, 'raw' for classification/regression;
-                  'prob' for class probabilities
-    index: Optional, list of class indices to export
-    class_labels: Optional, class labels
-    rowincr: Integer of raster rows to process at one time
-    n_jobs: Number of processing cores
+    estimator (object): scikit-learn estimator object
+    predictors (list): Names of GRASS rasters
+    output (string): Name of GRASS raster to output classification results
+    predict_type (string): 'raw' for classification/regression;
+        'prob' for class probabilities
+    index (list): Optional, list of class indices to export
+    class_labels (1d numpy array): Optional, class labels
+    overwrite (boolean): enable overwriting of existing raster
+    n_jobs (integer): Number of processing cores;
+        -1 for all cores; -2 for all cores-1
+
+    Returns
+    -------
+    prediction (2d or 3d numpy array of prediction results)
+
     """
 
     from sklearn.externals.joblib import Parallel, delayed
+
+    # TODO
+    # better memory efficiency and use of memmap for parallel
+    # processing
     #from sklearn.externals.joblib.pool import has_shareable_memory
 
     # convert potential single index to list
@@ -225,7 +241,7 @@ def predict(estimator, predictors, output, predict_type='raw', index=None,
     #  writing of predicted results for classification
     if predict_type == 'raw':
         numpy2raster(array=prediction, mtype=ftype, rastname=output,
-                     overwrite=overwrite)
+                     overwrite=True)
 
     # writing of predicted results for probabilities
     if predict_type == 'prob':
@@ -248,24 +264,27 @@ def predict(estimator, predictors, output, predict_type='raw', index=None,
             numpy2raster(array=prediction[:, :, pred_index], mtype='FCELL',
                          rastname=rastername, overwrite=overwrite)
 
+    return (prediction)
+
 
 def __predict_parallel(estimator, predictors, predict_type, current, row):
     """
-    Performs prediction on range of rows in grass rasters
+
+    Performs prediction on a single row of a GRASS raster(s))
 
     Args
     ----
-    estimator: scikit-learn estimator object
-    predictors: list of GRASS rasters
-    predict_type: character, 'raw' for classification/regression;
-                  'prob' for class probabilities
-    current: current region settings
-    row: Rasterrow to perform prediction on
+    estimator (object): Scikit-learn estimator object
+    predictors (list): Names of GRASS rasters
+    predict_type (string): 'raw' for classification/regression;
+        'prob' for class probabilities
+    current (dict): current region settings
+    row (integer): Row number to perform prediction on
 
     Returns
     -------
-    result: 2D (classification) or 3D numpy array (class probabilities) of predictions
-    ftypes: data storage type
+    result (2d oe 3d numpy array): Prediction results
+
     """
 
     # initialize output

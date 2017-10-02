@@ -17,21 +17,24 @@ from grass.pygrass.modules.shortcuts import imagery as im
 
 def model_classifiers(estimator, random_state, n_jobs, p, weights=None):
     """
+
     Provides the classifiers and parameters using by the module
 
     Args
     ----
-    estimator: Name of estimator
-    random_state: Seed to use in randomized components
-    n_jobs: Integer, number of processing cores to use
-    p: Dict, containing classifier setttings
-    weights: None, or 'balanced' to add class_weights
+    estimator (string): Name of scikit learn estimator
+    random_state (float): Seed to use in randomized components
+    n_jobs (integer): Number of processing cores to use;
+        -1 for all cores; -2 for all cores-1
+    p (dict): Classifier setttings (keys) and values
+    weights (string): None, or 'balanced' to add class_weights
 
     Returns
     -------
-    clf: Scikit-learn classifier object
-    mode: Flag to indicate whether classifier performs classification or
-          regression
+    clf (object): Scikit-learn classifier object
+    mode (string): Flag to indicate whether classifier performs classification
+        or regression
+
     """
 
     from sklearn.linear_model import LogisticRegression
@@ -200,15 +203,17 @@ def model_classifiers(estimator, random_state, n_jobs, p, weights=None):
 
 def save_training_data(X, y, groups, coords, file):
     """
+
     Saves any extracted training data to a csv file
 
     Args
     ----
-    X: Numpy array containing predictor values
-    y: Numpy array containing labels
-    groups: Numpy array of group labels
-    coords: Numpy array containing xy coordinates of samples
-    file: Path to a csv file to save data to
+    X (2d numpy array): Numpy array containing predictor values
+    y (1d numpy array): Numpy array containing labels
+    groups (1d numpy array): Numpy array of group labels
+    coords (2d numpy array): Numpy array containing xy coordinates of samples
+    file (string): Path to a csv file to save data to
+
     """
 
     # if there are no group labels, create a nan filled array
@@ -222,18 +227,20 @@ def save_training_data(X, y, groups, coords, file):
 
 def load_training_data(file):
     """
+
     Loads training data and labels from a csv file
 
     Args
     ----
-    file: Path to a csv file to save data to
+    file (string): Path to a csv file to save data to
 
     Returns
     -------
-    X: Numpy array containing predictor values
-    y: Numpy array containing labels
-    groups: Numpy array of group labels, or None
-    coords: Numpy array containing x,y coordinates of samples
+    X (2d numpy array): Numpy array containing predictor values
+    y (1d numpy array): Numpy array containing labels
+    groups (1d numpy array): Numpy array of group labels, or None
+    coords (2d numpy array): Numpy array containing x,y coordinates of samples
+
     """
 
     training_data = np.loadtxt(file, delimiter=',')
@@ -257,16 +264,18 @@ def load_training_data(file):
 
 def maps_from_group(group):
     """
+
     Parse individual rasters into a list from an imagery group
 
     Args
     ----
-    group: String; GRASS imagery group
+    group (string): Name of GRASS imagery group
 
     Returns
     -------
-    maplist: List containing individual GRASS raster maps
-    map_names: List with print friendly map names
+    maplist (list): List containing individual GRASS raster maps
+    map_names (list): List with print friendly map names
+
     """
     groupmaps = im.group(group=group, flags="g",
                          quiet=True, stdout_=PIPE).outputs.stdout
