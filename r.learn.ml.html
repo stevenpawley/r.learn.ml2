@@ -1,13 +1,13 @@
 <h2>DESCRIPTION</h2>
 
-<p><em>r.learn.ml</em> represents a front-end to the scikit learn python package for the purpose of performing classification and regression on GRASS rasters as part of an imagery group. The module enables classification and regression using several commonly used classifiers in remote sensing and spatial modelling. The choice of classifier is set using the <em>classifier</em> parameter. For more details relating to the classifiers, refer to the <a href="http://scikit-learn.org/stable/">scikit learn documentation.</a> The following classification and regression methods are available:</p>
+<p><em>r.learn.ml</em> represents a front-end to the scikit learn python package. The module enables scikit-learn classification and regression models to be applied to GRASS GIS rasters that are stored as part of an imagery group. Several commonly used classifiers and regressors are exposed in the GUI and the choice of classifier is set using the <em>classifier</em> parameter. For more details relating to the classifiers, refer to the <a href="http://scikit-learn.org/stable/">scikit learn documentation.</a> The following classification and regression methods are available:</p>
 
 <ul>
 	<li><em>LogisticRegression</em> represents a linear model for classification and is a modification of linear regression, but using the logistic distribution which enables the use of a categorical response variable. If the <em>response</em> raster is coded to 0 and 1, then a binary classification occurs, but the scikit-learn logistic regression can also perform a multiclass classification using a one-versus-rest scheme.</li>
 	
 	<li><em>LinearDiscriminantAnalysis</em> and <em>QuadraticDiscriminantAnalysis</em> are classifiers with linear and quadratic decision surfaces. These classifiers do not take any parameters and are inherently multiclass. They can only be used for classification.</li>
 	
-	<li><em>KNeighborsClassifier</em> is a simple classification method based on closest distance to a predefined number of training samples. Two hyperparameters are exposed, with <em>n_neighbors</em> governing the number of neighbors to use to decide the prediction label, and <em>weights</em> specifying whether these neighbors should have equal weights or whether they should be inversely weighted by their distance.</li>
+	<li><em>KNeighborsClassifier</em> classifies samples based on closest distance to a predefined number of training samples. Two hyperparameters are exposed, with <em>n_neighbors</em> governing the number of neighbors to use to decide the prediction label, and <em>weights</em> specifying whether these neighbors should have equal weights or whether they should be inversely weighted by their distance.</li>
 	
 	<li><em>GaussianNB</em> is the Gaussian Naive Bayes algorithm and can be used for classification only. Naive Bayes is a supervised learning algorithm based on applying Bayes theorem with the naive assumption of independence between every pair of features. This classifier does not take any parameters.</li>
 	
@@ -52,9 +52,9 @@
 
 <h2>NOTES</h2>
 
-<p><em>r.learn.ml</em> uses the "scikit-learn" machine learning python package along with the "pandas" package. These packages need to be installed within your GRASS GIS Python environment. For Linux users, these packages should be available through the linux package manager. For MS-Windows users using a 64 bit GRASS, the easiest way of installing the packages is by using the precompiled binaries from <a href="http://www.lfd.uci.edu/~gohlke/pythonlibs/">Christoph Gohlke</a> and by using the <a href="https://grass.osgeo.org/download/software/ms-windows/">OSGeo4W</a> installation method of GRASS, where the python setuptools can also be installed. You can then use 'easy_install pip' to install the pip package manager. Then, you can download the NumPy-1.10+MKL and scikit-learn .whl files and install them using 'pip install packagename.whl'. For MS-Windows with a 32 bit GRASS, scikit-learn is available in the OSGeo4W installer.</p>
+<p><em>r.learn.ml</em> uses the "scikit-learn" machine learning python package along with the "pandas" package. These packages need to be installed within your GRASS GIS Python environment. For Linux users, these packages should be available through the linux package manager. For MS-Windows users using a 64 bit GRASS, the easiest way of installing the packages is by using the precompiled binaries from <a href="http://www.lfd.uci.edu/~gohlke/pythonlibs/">Christoph Gohlke</a> and by using the <a href="https://grass.osgeo.org/download/software/ms-windows/">OSGeo4W</a> installation method of GRASS, where the python setuptools can also be installed. You can then use 'easy_install pip' to install the pip package manager. Then, you can download the NumPy+MKL and scikit-learn .whl files and install them using 'pip install packagename.whl'. For MS-Windows with a 32 bit GRASS, scikit-learn is available in the OSGeo4W installer.</p>
 
-<p><em>r.learn.ml</em> is designed to keep system memory requirements relatively low. For this purpose, the rasters are read from the disk row-by-row, using the RasterRow method in PyGRASS. This however does not represent an efficient volume of data to pass to the classifiers, which are mostly multithreaded. Therefore, groups of rows specified by the <em>lines</em> parameter are passed to the classifier, and the reclassified image is reconstructed and written row-by-row back to the disk. <em>lines=25</em> should be reasonable for most systems with 4-8 GB of ram. The row-by-row access however results in slow performance when sampling the imagery group to build the training data set when providing a raster as the trainingmap. Instead, the default behaviour is to read each predictor into memory at a time. If this still exceeds the system memory then the <em>-l</em> flag can be set to write each predictor to a numpy memmap file, and classification/regression can then be performed on rasters of any size irrespective of the available memory.</p>
+<p><em>r.learn.ml</em> is designed to keep system memory requirements relatively low. For this purpose, the rasters are read from the disk row-by-row, using the RasterRow method in PyGRASS. This however does not represent an efficient volume of data to pass to the classifiers, which are mostly multithreaded. Therefore, groups of rows specified by the <em>rowincr</em> parameter are passed to the classifier, and the reclassified image is reconstructed and written row-by-row back to the disk. <em>rowincr=25</em> should be reasonable for most systems with 4-8 GB of ram. The row-by-row access however results in slow performance when sampling the imagery group to build the training data set when providing a raster as the trainingmap. Instead, the default behaviour is to read each predictor into memory at a time. If this still exceeds the system memory then the <em>-l</em> flag can be set to write each predictor to a numpy memmap file, and classification/regression can then be performed on rasters of any size irrespective of the available memory.</p>
 
 <p>Many of the classifiers involve a random process which can causes a small amount of variation in the classification results, out-of-bag error, and feature importances. To enable reproducible results, a seed is supplied to the classifier. This can be changed using the <em>randst</em> parameter.</p>
 
@@ -78,7 +78,7 @@ r.random input=landclass96 npoints=1000 raster=landclass96_roi
 <p>Then we can use these training pixels to perform a classification on the more recently obtained landsat 7 image:</p>
 <div class="code"><pre>
 r.learn.ml group=lsat7_2000 trainingmap=landclass96_roi output=rf_classification \
-  classifier=RandomForestClassifier n_estimators=500 randst=1 lines=25
+  classifier=RandomForestClassifier n_estimators=500
 
 # copy category labels from landclass training map to result
 r.category rf_classification raster=landclass96_roi
@@ -95,7 +95,7 @@ r.category rf_classification
 
 <h2>ACKNOWLEDGEMENTS</h2>
 
-<p>Thanks for Paulo van Breugel and Vaclav Petras for general testing, and Paulo for the suggestion to enable saving of the fitted models.</p>
+<p>Thanks for Paulo van Breugel and Vaclav Petras for testing.</p>
 
 <h2>REFERENCES</h2>
 
