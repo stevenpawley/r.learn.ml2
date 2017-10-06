@@ -103,6 +103,7 @@ def model_classifiers(estimator, random_state, n_jobs, p, weights=None):
             'LogisticRegression':
                 LogisticRegression(C=p['C'],
                                    class_weight=weights,
+                                   solver='liblinear',
                                    random_state=random_state,
                                    n_jobs=n_jobs,
                                    fit_intercept=True),

@@ -318,6 +318,14 @@
 #%end
 
 #%option
+#% key: rowincr
+#% type: integer
+#% description: Maximum number of raster rows to read/write in single chunk whilst performing prediction
+#% answer: 25
+#% guisection: Optional
+#%end
+
+#%option
 #% key: n_jobs
 #% type: integer
 #% description: Number of cores for multiprocessing, -2 is n_cores-1
@@ -417,7 +425,8 @@ from grass.pygrass.modules.shortcuts import raster as r
 
 set_path('r.learn.ml')
 from rlearn_crossval import cross_val_scores
-from rlearn_rasters import predict, extract_pixels, extract_points
+from rlearn_sampling import extract_pixels, extract_points
+from rlearn_prediction import predict
 from rlearn_utils import (
     model_classifiers, save_training_data, load_training_data, maps_from_group)
 
@@ -506,6 +515,7 @@ def main():
     load_training = options['load_training']
     save_training = options['save_training']
     indexes = options['indexes']
+    rowincr = int(options['rowincr'])
     n_jobs = int(options['n_jobs'])
     lowmem = flags['l']
     impute = flags['i']
@@ -647,6 +657,9 @@ def main():
                     trainingpoints, maplist2, field)
             group_id = None
 
+            if len(y) < 1 or X.shape[0] < 1:
+                gs.fatal('There are too few training features to perform classification')
+
             # take group id from last column and remove from predictors
             if group_raster != '':
                 group_id = X[:, -1]
@@ -744,13 +757,11 @@ def main():
         # ---------------------------------------------------------------------
         # standardization
         if norm_data is True and categorymaps is None:
-	    gs.message('norm_data is True and categorymaps is None:')
             clf = Pipeline([('scaling', StandardScaler()),
                             ('classifier', clf)])
 
         # onehot encoding
         if categorymaps is not None and norm_data is False:
-	    gs.message('categorymaps is not None and norm_data is False:')
             enc = OneHotEncoder(categorical_features=categorymaps)
             enc.fit(X)
             clf = Pipeline([('onehot', OneHotEncoder(
@@ -761,7 +772,6 @@ def main():
 
         # standardization and onehot encoding
         if norm_data is True and categorymaps is not None:
-	    gs.message('norm_data is True and categorymaps is not None:')
             enc = OneHotEncoder(categorical_features=categorymaps)
             enc.fit(X)
             clf = Pipeline([('onehot', OneHotEncoder(
@@ -807,7 +817,8 @@ def main():
         else:
             if balance is True and classifier in (
                     'GradientBoostingClassifier', 'XGBClassifier'):
-                clf.fit(X=X, y=y, sample_weight=class_weights)
+                clf.fit(X=X, y=y, **{'classifier__sample_weight': class_weights})
+
             else:
                 clf.fit(X, y)
 
@@ -912,11 +923,12 @@ def main():
         # load a previously fitted train object
         if model_load != '':
             # load a previously fitted model
-            X, y, sample_coords, groups, clf = joblib.load(model_load)
+            X, y, sample_coords, group_id, clf = joblib.load(model_load)
+            clf.fit(X,y)
 
     # Optionally save the fitted model
     if model_save != '':
-        joblib.dump(clf, model_save)
+        joblib.dump((X, y, sample_coords, group_id, clf), model_save)
 
     # -------------------------------------------------------------------------
     # prediction on grass imagery group
@@ -930,14 +942,15 @@ def main():
             gs.message('Predicting classification/regression raster...')
             predict(estimator=clf, predictors=maplist, output=output,
                     predict_type='raw', overwrite=gs.overwrite(),
-                    n_jobs=n_jobs)
+                    rowincr=rowincr, n_jobs=n_jobs)
 
             if predict_resamples is True:
                 for i in range(cv):
                     resample_name = output + '_Resample' + str(i)
                     predict(estimator=models[i], predictors=maplist,
                             output=resample_name, predict_type='raw',
-                            overwrite=gs.overwrite(), n_jobs=n_jobs)
+                            overwrite=gs.overwrite(),
+                            rowincr=rowincr, n_jobs=n_jobs)
 
         # predict class probabilities
         if probability is True:
@@ -945,7 +958,7 @@ def main():
             predict(estimator=clf, predictors=maplist, output=output,
                     predict_type='prob', index=indexes,
                     class_labels=np.unique(y), overwrite=gs.overwrite(),
-                    n_jobs=n_jobs)
+                    rowincr=rowincr, n_jobs=n_jobs)
 
             if predict_resamples is True:
                 for i in range(cv):
@@ -953,7 +966,8 @@ def main():
                     predict(estimator=models[i], predictors=maplist,
                             output=resample_name, predict_type='prob',
                             class_labels=np.unique(y), index=indexes,
-                            overwrite=gs.overwrite(), n_jobs=n_jobs)
+                            overwrite=gs.overwrite(),
+                            rowincr=rowincr, n_jobs=n_jobs)
     else:
         gs.message("Model built and now exiting")
 

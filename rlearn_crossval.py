@@ -144,23 +144,31 @@ def __parallel_fit(estimator, X, y, groups, train_indices, test_indices, sample_
         fitting applied only to XGBoost and Gradient Boosting classifiers
 
     """
-
     # create training and test folds
     X_train, y_train = X[train_indices],  y[train_indices]
 
-    if groups is not None: groups_train = groups[train_indices]
-    else: groups_train = None
+    if groups is not None:
+        groups_train = groups[train_indices]
+    else:
+        groups_train = None
 
     # subset training and test fold sample_weight
-    if sample_weight is not None: weights = sample_weight[train_indices]
+    if sample_weight is not None:
+        weights = sample_weight[train_indices]
 
     # train estimator
     if groups is not None and type(estimator).__name__ in ['RandomizedSearchCV', 'GridSearchCV']:
-        if sample_weight is None: estimator.fit(X_train, y_train, groups=groups_train)
-        else: estimator.fit(X_train, y_train, groups=groups_train, sample_weight=weights)
+        if sample_weight is None:
+            estimator.fit(X_train, y_train, groups=groups_train)
+        else:
+            estimator.fit(
+                X_train, y_train, groups=groups_train,
+                **{'classifier__sample_weight': weights})
     else:
-        if sample_weight is None: estimator.fit(X_train, y_train)
-        else: estimator.fit(X_train, y_train, sample_weight=weights)
+        if sample_weight is None:
+            estimator.fit(X_train, y_train)
+        else:
+            estimator.fit(X_train, y_train, **{'classifier__sample_weight': weights})
 
     return estimator
 
@@ -199,6 +207,26 @@ def cross_val_scores(estimator, X, y, groups=None, sample_weight=None, cv=3,
     from sklearn import metrics
     from sklearn.model_selection import StratifiedKFold
     from sklearn.externals.joblib import Parallel, delayed
+
+    # first unwrap the estimator from any potential pipelines or gridsearchCV
+    if type(estimator).__name__ == 'Pipeline':
+        clf_type = estimator.named_steps['classifier']
+    else:
+        clf_type = estimator
+
+    if type(clf_type).__name__ == 'GridSearchCV' or \
+        type(clf_type).__name__ == 'RandomizedSearchCV':
+        clf_type = clf_type.best_estimator_
+
+    # check name against already multithreaded classifiers
+    if type(clf_type).__name__ in ['RandomForestClassifier',
+                                                  'RandomForestRegressor',
+                                                  'ExtraTreesClassifier',
+                                                  'ExtraTreesRegressor',
+                                                  'KNeighborsClassifier',
+                                                  'XGBClassifier',
+                                                  'XGBRegressor']:
+        n_jobs=1
 
     # -------------------------------------------------------------------------
     # create copies of estimator and create cross-validation iterator
@@ -291,7 +319,6 @@ def cross_val_scores(estimator, X, y, groups=None, sample_weight=None, cv=3,
     # -------------------------------------------------------------------------
     # Perform multiprocessing fitting of clf on each fold
     # -------------------------------------------------------------------------
-
     clf_resamples = Parallel(n_jobs=n_jobs)(
         delayed(__parallel_fit)(clf, X, y, groups, train_indices,
                               test_indices, sample_weight)

@@ -2,7 +2,7 @@
 # -- coding: utf-8 --
 
 """
-The module rlearn_rasters contains functions to
+The module rlearn_sampling contains functions to
 extract training data from GRASS rasters.
 """
 
@@ -12,7 +12,6 @@ import tempfile
 import grass.script as gs
 from grass.pygrass.raster import RasterRow
 from grass.pygrass.gis.region import Region
-from grass.pygrass.raster import numpy2raster
 from grass.pygrass.vector import VectorTopo
 from grass.pygrass.utils import get_raster_for_points, pixel2coor
 
@@ -120,6 +119,24 @@ def extract_pixels(response, predictors, lowmem=False, na_rm=False):
     return(training_data, training_labels, is_train)
 
 
+#def __extract_points_parallel(gvector, raster):
+#
+#    # open grass vector
+#    points = VectorTopo(gvector.split('@')[0])
+#    points.open('r')
+#
+#    # extract pixel values at point locations
+#    rio = RasterRow(raster)
+#    values = np.asarray(get_raster_for_points(points, rio))
+#    coordinates = values[:, 1:3]
+#    X = values[:, 3]
+#
+#    rio.close()
+#    points.close()
+#
+#    return (X, coordinates)
+
+
 def extract_points(gvector, grasters, field, na_rm=False):
     """
 
@@ -140,6 +157,8 @@ def extract_points(gvector, grasters, field, na_rm=False):
 
     """
 
+#    from sklearn.externals.joblib import Parallel, delayed
+
     # open grass vector
     points = VectorTopo(gvector.split('@')[0])
     points.open('r')
@@ -150,9 +169,15 @@ def extract_points(gvector, grasters, field, na_rm=False):
     # extract table field to numpy array
     table = points.table
     cur = table.execute("SELECT {field} FROM {name}".format(field=field, name=table.name))
-    #y = np.array([np.isnan if c is None else c[0] for c in cur])
-    y = [c[0] for c in cur]
+    y = np.array([np.isnan if c is None else c[0] for c in cur])
+    #y = [c[0] for c in cur]
     y = np.array(y, dtype='float')
+
+    # extract raster data in parallel
+#    X = Parallel(n_jobs=-1, max_nbytes=None)(
+#        delayed(__extract_points_parallel)
+#        (gvector, graster) for graster in grasters)
+#    X = np.asarray(X)
 
     # extract raster data
     X = np.zeros((points.num_primitives()['point'], len(grasters)), dtype=float)
@@ -185,164 +210,3 @@ def extract_points(gvector, grasters, field, na_rm=False):
         X = X[~np.isnan(X).any(axis=1)]
 
     return(X, y, coordinates)
-
-
-def predict(estimator, predictors, output, predict_type='raw', index=None,
-            class_labels=None, overwrite=False, n_jobs=-2):
-    """
-
-    Prediction on list of GRASS rasters using a fitted scikit learn model
-
-    Args
-    ----
-    estimator (object): scikit-learn estimator object
-    predictors (list): Names of GRASS rasters
-    output (string): Name of GRASS raster to output classification results
-    predict_type (string): 'raw' for classification/regression;
-        'prob' for class probabilities
-    index (list): Optional, list of class indices to export
-    class_labels (1d numpy array): Optional, class labels
-    overwrite (boolean): enable overwriting of existing raster
-    n_jobs (integer): Number of processing cores;
-        -1 for all cores; -2 for all cores-1
-
-    Returns
-    -------
-    prediction (2d or 3d numpy array of prediction results)
-
-    """
-
-    from sklearn.externals.joblib import Parallel, delayed
-
-    # TODO
-    # better memory efficiency and use of memmap for parallel
-    # processing
-    #from sklearn.externals.joblib.pool import has_shareable_memory
-
-    # convert potential single index to list
-    if isinstance(index, int): index = [index]
-
-    # open predictors as list of rasterrow objects
-    current = Region()
-
-    # perform predictions on lists of rows in parallel
-    prediction = Parallel(n_jobs=n_jobs, max_nbytes=None)(
-        delayed(__predict_parallel)
-        (estimator, predictors, predict_type, current, row)
-        for row in range(current.rows))
-    prediction = np.asarray(prediction)
-
-    # determine raster dtype
-    if prediction.dtype == 'float':
-        ftype = 'FCELL'
-    else:
-        ftype = 'CELL'
-
-    #  writing of predicted results for classification
-    if predict_type == 'raw':
-        numpy2raster(array=prediction, mtype=ftype, rastname=output,
-                     overwrite=True)
-
-    # writing of predicted results for probabilities
-    if predict_type == 'prob':
-
-        # use class labels if supplied
-        # else output predictions as 0,1,2...n
-        if class_labels is None:
-            class_labels = range(prediction.shape[2])
-
-        # output all class probabilities if subset is not specified
-        if index is None:
-            index = class_labels
-
-        # select indexes of predictions 3d numpy array to be exported to rasters
-        selected_prediction_indexes = [i for i, x in enumerate(class_labels) if x in index]
-
-        # write each 3d of numpy array as a probability raster
-        for pred_index, label in zip(selected_prediction_indexes, index):
-            rastername = output + '_' + str(label)
-            numpy2raster(array=prediction[:, :, pred_index], mtype='FCELL',
-                         rastname=rastername, overwrite=overwrite)
-
-    return (prediction)
-
-
-def __predict_parallel(estimator, predictors, predict_type, current, row):
-    """
-
-    Performs prediction on a single row of a GRASS raster(s))
-
-    Args
-    ----
-    estimator (object): Scikit-learn estimator object
-    predictors (list): Names of GRASS rasters
-    predict_type (string): 'raw' for classification/regression;
-        'prob' for class probabilities
-    current (dict): current region settings
-    row (integer): Row number to perform prediction on
-
-    Returns
-    -------
-    result (2d oe 3d numpy array): Prediction results
-
-    """
-
-    # initialize output
-    result, mask = None, None
-
-    # open grass rasters
-    n_features = len(predictors)
-    rasstack = [0] * n_features
-
-    for i in range(n_features):
-        rasstack[i] = RasterRow(predictors[i])
-        if rasstack[i].exist() is True:
-            rasstack[i].open('r')
-        else:
-            gs.fatal("GRASS raster " + predictors[i] +
-                          " does not exist.... exiting")
-
-    # loop through each row, and each band and add to 2D img_np_row
-    img_np_row = np.zeros((current.cols, n_features))
-    for band in range(n_features):
-        img_np_row[:, band] = np.array(rasstack[band][row])
-
-    # create mask
-    img_np_row[img_np_row == -2147483648] = np.nan
-    mask = np.zeros((img_np_row.shape[0]))
-    for feature in range(n_features):
-        invalid_indexes = np.nonzero(np.isnan(img_np_row[:, feature]))
-        mask[invalid_indexes] = np.nan
-
-    # reshape each row-band matrix into a n*m array
-    nsamples = current.cols
-    flat_pixels = img_np_row.reshape((nsamples, n_features))
-
-    # remove NaNs prior to passing to scikit-learn predict
-    flat_pixels = np.nan_to_num(flat_pixels)
-
-    # perform prediction for classification/regression
-    if predict_type == 'raw':
-        result = estimator.predict(flat_pixels)
-        result = result.reshape((current.cols))
-
-        # determine nodata value and grass raster type
-        if result.dtype == 'float':
-            nodata = np.nan
-        else:
-            nodata = -2147483648
-
-        # replace NaN values so that the prediction does not have a border
-        result[np.nonzero(np.isnan(mask))] = nodata
-
-    # perform prediction for class probabilities
-    if predict_type == 'prob':
-        result = estimator.predict_proba(flat_pixels)
-        result = result.reshape((current.cols, result.shape[1]))
-        result[np.nonzero(np.isnan(mask))] = np.nan
-
-    # close maps
-    for i in range(n_features):
-        rasstack[i].close()
-
-    return (result)
