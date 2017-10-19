@@ -183,6 +183,8 @@ def extract_points(gvector, grasters, field, na_rm=False):
     X = np.zeros((points.num_primitives()['point'], len(grasters)), dtype=float)
     for i, raster in enumerate(grasters):
         rio = RasterRow(raster)
+        if rio.exist() is False:
+            gs.fatal('Raster {x} does not exist....'.format(x=raster))
         values = np.asarray(get_raster_for_points(points, rio))
         coordinates = values[:, 1:3]
         X[:, i] = values[:, 3]

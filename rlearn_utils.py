@@ -61,7 +61,7 @@ def model_classifiers(estimator, random_state, n_jobs, p, weights=None):
             from pyearth import Earth
 
             earth_classifier = Pipeline(
-                [('Earth', Earth(max_degree=p['max_degree'])),
+                [('classifier', Earth(max_degree=p['max_degree'])),
                  ('Logistic', LogisticRegression(n_jobs=n_jobs))])
 
             classifiers = {
@@ -71,28 +71,32 @@ def model_classifiers(estimator, random_state, n_jobs, p, weights=None):
         except:
             gs.fatal('Py-earth package not installed')
 
-    elif estimator == 'XGBClassifier' or estimator == 'XGBRegressor':
+    elif estimator == 'LightGBMClassifier' or estimator == 'LightGBMRegressor':
         try:
-            from xgboost import XGBClassifier, XGBRegressor
+            from lightgbm import LGBMClassifier, LGBMRegressor
 
             if p['max_depth'] is None:
-                p['max_depth'] = int(3)
+                p['max_depth'] = int(-1)
 
             classifiers = {
-                'XGBClassifier':
-                    XGBClassifier(learning_rate=p['learning_rate'],
+                'LGBMClassifier':
+                    LGBMClassifier(learning_rate=p['learning_rate'],
                                   n_estimators=p['n_estimators'],
                                   max_depth=p['max_depth'],
                                   subsample=p['subsample'],
-                                  nthread=n_jobs),
-                'XGBRegressor':
-                    XGBRegressor(learning_rate=p['learning_rate'],
+                                  num_leaves=p['num_leaves'],
+                                  n_jobs=n_jobs,
+                                  silent=True),
+                'LGBMRegressor':
+                    LGBMRegressor(learning_rate=p['learning_rate'],
                                  n_estimators=p['n_estimators'],
                                  max_depth=p['max_depth'],
                                  subsample=p['subsample'],
-                                 nthread=n_jobs)}
+                                 num_leaves=p['num_leaves'],
+                                 n_jobs=n_jobs,
+                                 silent=True)}
         except:
-            gs.fatal('XGBoost package not installed')
+            gs.fatal('LightGBM package not installed')
     else:
         # core sklearn classifiers go here
         classifiers = {
@@ -193,6 +197,7 @@ def model_classifiers(estimator, random_state, n_jobs, p, weights=None):
         or estimator == 'QuadraticDiscriminantAnalysis' \
         or estimator == 'EarthClassifier' \
         or estimator == 'XGBClassifier' \
+        or estimator == 'LGBMClassifier' \
         or estimator == 'SVC' \
         or estimator == 'KNeighborsClassifier':
         mode = 'classification'
@@ -289,3 +294,17 @@ def maps_from_group(group):
         map_names.append(rastername.split('@')[0])
 
     return(maplist, map_names)
+
+
+def save_model(estimator, X, y, sample_coords, groups, filename):
+    from sklearn.externals import joblib
+
+    joblib.dump((estimator, X, y, sample_coords, group_id), filename)
+
+
+def load_model(filename):
+    from sklearn.externals import joblib
+    
+    estimator, X, y, sample_coords, groups = joblib.load(filename)
+
+    return (estimator, X, y, sample_coords, groups)

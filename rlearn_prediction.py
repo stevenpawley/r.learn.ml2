@@ -33,10 +33,6 @@ def predict(estimator, predictors, output, predict_type='raw', index=None,
     n_jobs (integer): Number of processing cores;
         -1 for all cores; -2 for all cores-1
 
-    Returns
-    -------
-    prediction (2d or 3d numpy array of prediction results)
-
     """
 
     from sklearn.externals.joblib import Parallel, delayed
@@ -48,23 +44,24 @@ def predict(estimator, predictors, output, predict_type='raw', index=None,
 
     # first unwrap the estimator from any potential pipelines or gridsearchCV
     if type(estimator).__name__ == 'Pipeline':
-        clf_type = estimator.named_steps['classifier']
+       clf_type = estimator.named_steps['classifier']
     else:
         clf_type = estimator
 
     if type(clf_type).__name__ == 'GridSearchCV' or \
-        type(clf_type).__name__ == 'RandomizedSearchCV':
+    type(clf_type).__name__ == 'RandomizedSearchCV':
         clf_type = clf_type.best_estimator_
 
     # check name against already multithreaded classifiers
-    if type(clf_type).__name__ in ['RandomForestClassifier',
-                                                  'RandomForestRegressor',
-                                                  'ExtraTreesClassifier',
-                                                  'ExtraTreesRegressor',
-                                                  'KNeighborsClassifier',
-                                                  'XGBClassifier',
-                                                  'XGBRegressor']:
-        n_jobs=1
+    if type(clf_type).__name__ in [
+       'RandomForestClassifier',
+        'RandomForestRegressor',
+        'ExtraTreesClassifier',
+        'ExtraTreesRegressor',
+        'KNeighborsClassifier',
+        'LGBMClassifier',
+        'LGBMRegressor']:
+       n_jobs = 1
 
     # convert potential single index to list
     if isinstance(index, int): index = [index]
@@ -126,8 +123,6 @@ def predict(estimator, predictors, output, predict_type='raw', index=None,
             numpy2raster(array=prediction[:, :, pred_index], mtype='FCELL',
                          rastname=rastername, overwrite=overwrite)
 
-    return (prediction)
-
 
 def __predict_parallel(estimator, predictors, predict_type, current, row):
     """
@@ -162,7 +157,7 @@ def __predict_parallel(estimator, predictors, predict_type, current, row):
             rasstack[i].open('r')
         else:
             gs.fatal("GRASS raster " + predictors[i] +
-                          " does not exist.... exiting")
+                     " does not exist.... exiting")
 
     # loop through each row, and each band and add to 2D img_np_row
     img_np_row = np.zeros((current.cols, n_features))
@@ -207,7 +202,7 @@ def __predict_parallel(estimator, predictors, predict_type, current, row):
     for i in range(n_features):
         rasstack[i].close()
 
-    return (result)
+    return result
 
 
 def __predict_parallel2(estimator, predictors, predict_type, current, row_min, row_max):
@@ -242,7 +237,7 @@ def __predict_parallel2(estimator, predictors, predict_type, current, row_min, r
             rasstack[i].open('r')
         else:
             gs.fatal("GRASS raster " + predictors[i] +
-                          " does not exist.... exiting")
+                     " does not exist.... exiting")
 
     # loop through each row, and each band and add to 2D img_np_row
     img_np_row = np.zeros((row_max-row_min, current.cols, n_features))
@@ -289,12 +284,3 @@ def __predict_parallel2(estimator, predictors, predict_type, current, row_min, r
         rasstack[i].close()
 
     return result
-
-
-def main(estimator, predictors, output, predict_type='raw', index=None,
-            class_labels=None, overwrite=False, n_jobs=-2):
-    predict(estimator, predictors, output, predict_type, index,
-            class_labels, overwrite, n_jobs)
-
-if __name__ == '__main__':
-    main()

@@ -141,11 +141,13 @@ def __parallel_fit(estimator, X, y, groups, train_indices, test_indices, sample_
     train_indices, test_indices: 1D numpy arrays of indices to use for
         training/validation
     sample_weight (1D numpy array): of len(y) containing weights to use during
-        fitting applied only to XGBoost and Gradient Boosting classifiers
+        fitting
 
     """
+    from sklearn.pipeline import Pipeline
+
     # create training and test folds
-    X_train, y_train = X[train_indices],  y[train_indices]
+    X_train, y_train = X[train_indices], y[train_indices]
 
     if groups is not None:
         groups_train = groups[train_indices]
@@ -156,19 +158,19 @@ def __parallel_fit(estimator, X, y, groups, train_indices, test_indices, sample_
     if sample_weight is not None:
         weights = sample_weight[train_indices]
 
-    # train estimator
-    if groups is not None and type(estimator).__name__ in ['RandomizedSearchCV', 'GridSearchCV']:
-        if sample_weight is None:
-            estimator.fit(X_train, y_train, groups=groups_train)
-        else:
-            estimator.fit(
-                X_train, y_train, groups=groups_train,
-                **{'classifier__sample_weight': weights})
+    # specify fit_params for sample_weights if required
+    if isinstance(estimator, Pipeline) and sample_weight is not None:
+        fit_params = {'classifier__sample_weight': weights}
+    elif not istinstance(estimator, Pipeline) and sample_weight is not None:
+        fit_params = {'sample_weight': weights}
     else:
-        if sample_weight is None:
-            estimator.fit(X_train, y_train)
-        else:
-            estimator.fit(X_train, y_train, **{'classifier__sample_weight': weights})
+        fit_params = {}
+
+    # fit estimator with/without groups
+    if groups is not None and type(estimator).__name__ in ['RandomizedSearchCV', 'GridSearchCV']:
+        estimator.fit(X_train, y_train, groups=groups_train, **fit_params)
+    else:
+        estimator.fit(X_train, y_train, **fit_params)
 
     return estimator
 
@@ -219,13 +221,14 @@ def cross_val_scores(estimator, X, y, groups=None, sample_weight=None, cv=3,
         clf_type = clf_type.best_estimator_
 
     # check name against already multithreaded classifiers
-    if type(clf_type).__name__ in ['RandomForestClassifier',
-                                                  'RandomForestRegressor',
-                                                  'ExtraTreesClassifier',
-                                                  'ExtraTreesRegressor',
-                                                  'KNeighborsClassifier',
-                                                  'XGBClassifier',
-                                                  'XGBRegressor']:
+    if type(clf_type).__name__ in [
+        'RandomForestClassifier',
+        'RandomForestRegressor',
+        'ExtraTreesClassifier',
+        'ExtraTreesRegressor',
+        'KNeighborsClassifier',
+        'LGBMClassifier',
+        'LGBMRegressor']:
         n_jobs=1
 
     # -------------------------------------------------------------------------

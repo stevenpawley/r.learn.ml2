@@ -34,6 +34,14 @@
 #%end
 
 #%option G_OPT_R_INPUT
+#% key: rasters
+#% label: Rasters to be classified
+#% description: GRASS raster maps representing feature variables to be used in the machine learning model
+#% required: no
+#% multiple: yes
+#%end
+
+#%option G_OPT_R_INPUT
 #% key: trainingmap
 #% label: Labelled pixels
 #% description: Raster map with labelled pixels for training
@@ -70,7 +78,7 @@
 #% label: Classifier
 #% description: Supervised learning model to use
 #% answer: RandomForestClassifier
-#% options: LogisticRegression,LinearDiscriminantAnalysis,QuadraticDiscriminantAnalysis,KNeighborsClassifier,GaussianNB,DecisionTreeClassifier,DecisionTreeRegressor,RandomForestClassifier,RandomForestRegressor,ExtraTreesClassifier,ExtraTreesRegressor,GradientBoostingClassifier,GradientBoostingRegressor,SVC,EarthClassifier,EarthRegressor,XGBClassifier,XGBRegressor
+#% options: LogisticRegression,LinearDiscriminantAnalysis,QuadraticDiscriminantAnalysis,KNeighborsClassifier,GaussianNB,DecisionTreeClassifier,DecisionTreeRegressor,RandomForestClassifier,RandomForestRegressor,ExtraTreesClassifier,ExtraTreesRegressor,GradientBoostingClassifier,GradientBoostingRegressor,SVC,EarthClassifier,EarthRegressor,LGBMClassifier,LGBMRegressor
 #% guisection: Classifier settings
 #% required: no
 #%end
@@ -99,8 +107,18 @@
 #% key: max_depth
 #% type: integer
 #% label: Maximum tree depth; zero uses classifier defaults
-#% description: Maximum tree depth for tree-based method; zero uses classifier defaults (full-growing for Decision trees and Randomforest, 3 for GBM and XGB)
+#% description: Maximum tree depth for tree-based method; zero uses classifier defaults (full-growing for Decision trees and Randomforest, 3 for GBM; no max_depth for LGBM)
 #% answer:0
+#% multiple: yes
+#% guisection: Classifier settings
+#%end
+
+#%option
+#% key: num_leaves
+#% type: integer
+#% label: Maximum number of leaves for LightGBM
+#% description: Maximum number of leaves for LightGBM
+#% answer:31
 #% multiple: yes
 #% guisection: Classifier settings
 #%end
@@ -412,6 +430,7 @@
 #% exclusive: trainingmap,load_training
 #% exclusive: trainingpoints,trainingmap
 #% exclusive: trainingpoints,load_training
+#% exclusive: group,rasters
 #%end
 
 from __future__ import absolute_import
@@ -482,6 +501,7 @@ def main():
         'learning_rate': options['learning_rate'],
         'subsample': options['subsample'],
         'max_depth': options['max_depth'],
+        'num_leaves': options['num_leaves'],
         'max_features': options['max_features'],
         'max_degree': options['max_degree'],
         'n_neighbors': options['n_neighbors'],
@@ -743,9 +763,9 @@ def main():
         # define sample weights for gradient boosting classifiers
         # ---------------------------------------------------------------------
 
-        # sample weights for GradientBoosting or XGBClassifier
+        # classifiers that take sample_weights
         if balance is True and mode == 'classification' and classifier in (
-                'GradientBoostingClassifier', 'XGBClassifier'):
+                'GradientBoostingClassifier', 'LGBMClassifier', 'GaussianNB'):
             from sklearn.utils import compute_class_weight
             class_weights = compute_class_weight(
                 class_weight='balanced', classes=(y), y=y)
@@ -806,21 +826,19 @@ def main():
         gs.message(os.linesep)
         gs.message(('Fitting model using ' + classifier))
 
-        # pass groups to fit parameter GroupKFold/GroupShuffleSplit
-        # and param_grid are present
-        if isinstance(inner, (GroupKFold, GroupShuffleSplit)):
-            if balance is True and classifier in (
-                    'GradientBoostingClassifier', 'XGBClassifier'):
-                clf.fit(X=X, y=y, groups=group_id, sample_weight=class_weights)
+        # fitting ensuring that all options are passed
+        if classifier in ('GradientBoostingClassifier', 'LGBMClassifier', 'GausianNB') and balance is True:
+            if isinstance(clf, Pipeline):
+                fit_params = {'classifier__sample_weight': class_weights}
             else:
-                clf.fit(X=X, y=y, groups=group_id)
+                fit_params = {'sample_weight': class_weights}
         else:
-            if balance is True and classifier in (
-                    'GradientBoostingClassifier', 'XGBClassifier'):
-                clf.fit(X=X, y=y, **{'classifier__sample_weight': class_weights})
+            fit_params = {}
 
-            else:
-                clf.fit(X, y)
+        if isinstance(inner, (GroupKFold, GroupShuffleSplit)):
+            clf.fit(X, y, groups=group_id, **fit_params)
+        else:
+            clf.fit(X, y, **fit_params)
 
         # message best hyperparameter setup and optionally save using pandas
         if any(param_grid) is True:
