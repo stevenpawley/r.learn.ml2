@@ -71,7 +71,7 @@ def model_classifiers(estimator, random_state, n_jobs, p, weights=None):
         except:
             gs.fatal('Py-earth package not installed')
 
-    elif estimator == 'LightGBMClassifier' or estimator == 'LightGBMRegressor':
+    elif estimator == 'LGBMClassifier' or estimator == 'LGBMRegressor':
         try:
             from lightgbm import LGBMClassifier, LGBMRegressor
 
