@@ -161,7 +161,7 @@ def __parallel_fit(estimator, X, y, groups, train_indices, test_indices, sample_
     # specify fit_params for sample_weights if required
     if isinstance(estimator, Pipeline) and sample_weight is not None:
         fit_params = {'classifier__sample_weight': weights}
-    elif not istinstance(estimator, Pipeline) and sample_weight is not None:
+    elif not isinstance(estimator, Pipeline) and sample_weight is not None:
         fit_params = {'sample_weight': weights}
     else:
         fit_params = {}
