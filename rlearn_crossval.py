@@ -128,7 +128,7 @@ def __permute(estimator, X, y, best_score, scorer, random_state):
     return scores
 
 
-def __parallel_fit(estimator, X, y, groups, train_indices, test_indices, sample_weight):
+def __parallel_fit(estimator, X, y, groups, train_indices, sample_weight):
     """
 
     Fit classifiers/regressors in parallel
@@ -146,6 +146,8 @@ def __parallel_fit(estimator, X, y, groups, train_indices, test_indices, sample_
     """
     from sklearn.pipeline import Pipeline
 
+    rs_estimator = deepcopy(estimator)
+    
     # create training and test folds
     X_train, y_train = X[train_indices], y[train_indices]
 
@@ -168,11 +170,11 @@ def __parallel_fit(estimator, X, y, groups, train_indices, test_indices, sample_
 
     # fit estimator with/without groups
     if groups is not None and type(estimator).__name__ in ['RandomizedSearchCV', 'GridSearchCV']:
-        estimator.fit(X_train, y_train, groups=groups_train, **fit_params)
+        rs_estimator.fit(X_train, y_train, groups=groups_train, **fit_params)
     else:
-        estimator.fit(X_train, y_train, **fit_params)
+        rs_estimator.fit(X_train, y_train, **fit_params)
 
-    return estimator
+    return rs_estimator
 
 
 def cross_val_scores(estimator, X, y, groups=None, sample_weight=None, cv=3,
@@ -267,7 +269,11 @@ def cross_val_scores(estimator, X, y, groups=None, sample_weight=None, cv=3,
                        'roc_auc': metrics.roc_auc_score,
                        'zero_one_loss': metrics.zero_one_loss,
                        'r2': metrics.r2_score,
-                       'neg_mean_squared_error': metrics.mean_squared_error}
+                       'explained_variance': metrics.explained_variance_score,
+                       'neg_mean_absolute_error': metrics.mean_absolute_error,
+                       'neg_mean_squared_error': metrics.mean_squared_error,
+                       'neg_mean_squared_log_error': metrics.mean_squared_log_error,
+                       'neg_median_absolute_error': metrics.median_absolute_error}
 
     byclass_methods = {'f1': metrics.f1_score,
                        'fbeta': metrics.fbeta_score,
@@ -289,8 +295,7 @@ def cross_val_scores(estimator, X, y, groups=None, sample_weight=None, cv=3,
             list(scoring_methods.keys()).index(i)
         except:
             gs.fatal(('Scoring ', i, ' is not a valid scoring method',
-                            os.linesep(),
-                            'Valid methods are: ', scoring_methods.keys()))
+                      os.linesep, 'Valid methods are: ', scoring_methods.keys()))
 
     # set averaging type for global binary or multiclass scores
     if len(np.unique(y)) == 2 and all([0, 1] == np.unique(y)):
@@ -323,9 +328,8 @@ def cross_val_scores(estimator, X, y, groups=None, sample_weight=None, cv=3,
     # Perform multiprocessing fitting of clf on each fold
     # -------------------------------------------------------------------------
     clf_resamples = Parallel(n_jobs=n_jobs)(
-        delayed(__parallel_fit)(clf, X, y, groups, train_indices,
-                              test_indices, sample_weight)
-        for train_indices, test_indices in zip(trains, tests))
+        delayed(__parallel_fit)(clf, X, y, groups, train_indices, sample_weight)
+        for train_indices in trains)
 
     # -------------------------------------------------------------------------
     # loop through each fold and calculate performance metrics
@@ -358,8 +362,13 @@ def cross_val_scores(estimator, X, y, groups=None, sample_weight=None, cv=3,
             elif m == 'kappa' or m == 'specificity' or m == 'accuracy' \
             or m == 'hamming_loss' or m == 'jaccard_similarity' \
             or m == 'log_loss' or m == 'zero_one_loss' \
-            or m == 'matthews_corrcoef' or m == 'r2' \
-            or m == 'neg_mean_squared_error':
+            or m == 'matthews_corrcoef' \
+            or m == 'r2' \
+            or m == 'explained_variance' \
+            or m == 'neg_mean_absolute_error' \
+            or m == 'neg_mean_squared_error' \
+            or m == 'neg_mean_squared_log_error' \
+            or m == 'neg_median_absolute_error':
                 scores[m] = np.append(
                     scores[m], scoring_methods[m](y_test, y_pred))
 

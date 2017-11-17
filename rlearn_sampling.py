@@ -112,29 +112,13 @@ def extract_pixels(response, predictors, lowmem=False, na_rm=False):
 
     # remove samples containing NaNs
     if na_rm is True:
+        if np.isnan(training_data).any() == True:
+            gs.message('Removing samples with NaN values in the raster feature variables...')
         training_labels = training_labels[~np.isnan(training_data).any(axis=1)]
         is_train = is_train[~np.isnan(training_data).any(axis=1)]
         training_data = training_data[~np.isnan(training_data).any(axis=1)]
 
     return(training_data, training_labels, is_train)
-
-
-#def __extract_points_parallel(gvector, raster):
-#
-#    # open grass vector
-#    points = VectorTopo(gvector.split('@')[0])
-#    points.open('r')
-#
-#    # extract pixel values at point locations
-#    rio = RasterRow(raster)
-#    values = np.asarray(get_raster_for_points(points, rio))
-#    coordinates = values[:, 1:3]
-#    X = values[:, 3]
-#
-#    rio.close()
-#    points.close()
-#
-#    return (X, coordinates)
 
 
 def extract_points(gvector, grasters, field, na_rm=False):
@@ -157,8 +141,6 @@ def extract_points(gvector, grasters, field, na_rm=False):
 
     """
 
-#    from sklearn.externals.joblib import Parallel, delayed
-
     # open grass vector
     points = VectorTopo(gvector.split('@')[0])
     points.open('r')
@@ -170,14 +152,7 @@ def extract_points(gvector, grasters, field, na_rm=False):
     table = points.table
     cur = table.execute("SELECT {field} FROM {name}".format(field=field, name=table.name))
     y = np.array([np.isnan if c is None else c[0] for c in cur])
-    #y = [c[0] for c in cur]
     y = np.array(y, dtype='float')
-
-    # extract raster data in parallel
-#    X = Parallel(n_jobs=-1, max_nbytes=None)(
-#        delayed(__extract_points_parallel)
-#        (gvector, graster) for graster in grasters)
-#    X = np.asarray(X)
 
     # extract raster data
     X = np.zeros((points.num_primitives()['point'], len(grasters)), dtype=float)
@@ -207,6 +182,9 @@ def extract_points(gvector, grasters, field, na_rm=False):
 
     # remove samples containing NaNs
     if na_rm is True:
+        if np.isnan(X).any() == True:
+            gs.message('Removing samples with NaN values in the raster feature variables...')
+
         y = y[~np.isnan(X).any(axis=1)]
         coordinates = coordinates[~np.isnan(X).any(axis=1)]
         X = X[~np.isnan(X).any(axis=1)]

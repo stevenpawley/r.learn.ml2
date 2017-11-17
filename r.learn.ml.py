@@ -34,14 +34,6 @@
 #%end
 
 #%option G_OPT_R_INPUT
-#% key: rasters
-#% label: Rasters to be classified
-#% description: GRASS raster maps representing feature variables to be used in the machine learning model
-#% required: no
-#% multiple: yes
-#%end
-
-#%option G_OPT_R_INPUT
 #% key: trainingmap
 #% label: Labelled pixels
 #% description: Raster map with labelled pixels for training
@@ -213,11 +205,12 @@
 #% guisection: Classifier settings
 #%end
 
-#%option integer
+#%option G_OPT_R_INPUT
 #% key: categorymaps
+#% required: no
 #% multiple: yes
-#% label: Indices of categorical rasters within the imagery group (0..n-1)
-#% description: Indices of categorical rasters within the imagery group (0..n-1) that will be one-hot encoded. Leave empty if none.
+#% label: Names of categorical rasters within the imagery group
+#% description: Names of categorical rasters within the imagery group that will be one-hot encoded. Leave empty if none.
 #% guisection: Optional
 #%end
 
@@ -359,13 +352,6 @@
 #%end
 
 #%flag
-#% key: i
-#% label: Impute training data preprocessing
-#% description: Fill missing values of feature variables with median value. Otherwise, the samples with missing values in feature variables are excluded from training.
-#% guisection: Optional
-#%end
-
-#%flag
 #% key: p
 #% label: Output class membership probabilities
 #% description: A raster layer is created for each class. It is recommended to give a list of particular classes in interest to avoid consumption of large amounts of disk space.
@@ -430,7 +416,6 @@
 #% exclusive: trainingmap,load_training
 #% exclusive: trainingpoints,trainingmap
 #% exclusive: trainingpoints,load_training
-#% exclusive: group,rasters
 #%end
 
 from __future__ import absolute_import
@@ -466,7 +451,7 @@ def main():
     try:
         from sklearn.externals import joblib
         from sklearn.cluster import KMeans
-        from sklearn.preprocessing import StandardScaler, Imputer
+        from sklearn.preprocessing import StandardScaler
         from sklearn.model_selection import (
             GridSearchCV, GroupShuffleSplit, ShuffleSplit,
             StratifiedKFold, GroupKFold)
@@ -538,27 +523,26 @@ def main():
     rowincr = int(options['rowincr'])
     n_jobs = int(options['n_jobs'])
     lowmem = flags['l']
-    impute = flags['i']
     balance = flags['b']
 
-    # convert to lists
+    # fetch individual raster names from group
+    maplist, mapnames = maps_from_group(group)
+
+    # extract indices of category maps
     if categorymaps.strip() == '':
         categorymaps = None
     else:
-        try:
-            categorymaps = [int(i.strip()) for i in categorymaps.split(',')]
-            nCategories = len(maps_from_group(group)[0])
-            if min(categorymaps) < 0:
-                gs.fatal('Category map index can not be negative.')
-            if max(categorymaps) > nCategories - 1:
-                gs.fatal(
-                    'Category map index input can not exceed ' +
-                    str(nCategories - 1))
-            if not len(np.unique(categorymaps)) == len(categorymaps):
-                gs.fatal('Duplicate indices in category map index list.')
-        except:
-            gs.fatal('Error in category map list input.')
+        if isinstance(categorymaps, str):
+            categorymaps = [categorymaps]
+        cat_indexes = []
+        for cat in categorymaps:
+            try:
+                cat_indexes.append(maplist.index(cat))
+            except:
+                gs.fatal('Category map {0} not in the imagery group'.format(cat))
+        categorymaps = cat_indexes
 
+    # convert class probability indexes to list
     if ',' in indexes:
         indexes = [int(i) for i in indexes.split(',')]
     else:
@@ -630,15 +614,14 @@ def main():
                    'balanced_accuracy']
         search_scorer = make_scorer(metrics.matthews_corrcoef)
     else:
-        scoring = ['r2', 'neg_mean_squared_error']
+        scoring = ['r2', 'explained_variance', 'neg_mean_absolute_error',
+                   'neg_mean_squared_error', 'neg_mean_squared_log_error',
+                   'neg_median_absolute_error']
         search_scorer = 'r2'
 
     # -------------------------------------------------------------------------
     # Extract training data
     # -------------------------------------------------------------------------
-
-    # fetch individual raster names from group
-    maplist, _ = maps_from_group(group)
 
     if model_load == '':
 
@@ -671,10 +654,10 @@ def main():
             # extract training data
             if trainingmap != '':
                 X, y, sample_coords = extract_pixels(
-                    response=trainingmap, predictors=maplist2, lowmem=lowmem)
+                    response=trainingmap, predictors=maplist2, lowmem=lowmem, na_rm=True)
             elif trainingpoints != '':
                 X, y, sample_coords = extract_points(
-                    trainingpoints, maplist2, field)
+                    trainingpoints, maplist2, field, na_rm=True)
             group_id = None
 
             if len(y) < 1 or X.shape[0] < 1:
@@ -696,20 +679,6 @@ def main():
             if y.shape[0] == 0 or X.shape[0] == 0:
                 gs.fatal('No training pixels or pixels in imagery group '
                               '...check computational region')
-
-            # impute or remove NaNs
-            if impute is False:
-                if np.isnan(X).any() == True:
-                    gs.message(
-                        'Removing samples with NaN values in the raster feature variables...')
-                y = y[~np.isnan(X).any(axis=1)]
-                sample_coords = sample_coords[~np.isnan(X).any(axis=1)]
-                if group_id is not None:
-                    group_id = group_id[~np.isnan(X).any(axis=1)]
-                X = X[~np.isnan(X).any(axis=1)]
-            else:
-                missing = Imputer(strategy='median')
-                X = missing.fit_transform(X)
 
             # shuffle data
             if group_id is None:
@@ -881,6 +850,14 @@ def main():
                 scores, cscores, fimp, models, preds = cross_val_scores(
                     clf, X, y, group_id, class_weights, outer, scoring,
                     importances, n_permutations, random_state, n_jobs)
+
+                # from sklearn.model_selection import cross_validate
+                # scores = cross_validate(clf, X, y, group_id, scoring, outer, n_jobs, fit_params=fit_params)
+                # test_scoring = ['test_' + i for i in scoring]
+                # gs.message(os.linesep)
+                # gs.message(('Metric \t Mean \t Error'))
+                # for sc in test_scoring:
+                #     gs.message(sc + '\t' + str(scores[sc].mean()) + '\t' + str(scores[sc].std()))
 
                 preds = np.hstack((preds, sample_coords))
 
