@@ -1,9 +1,9 @@
-# r.learn.ml
-GRASS GIS 7 Add-on r.learn.ml
+# PygrassML
+Python package for applying machine learning to GRASS GIS 7 spatial data
 
 <h2>DESCRIPTION</h2>
 
-<p><em>r.learn.ml</em> represents a front-end to the scikit learn python package. The module enables scikit-learn classification and regression models to be applied to GRASS GIS rasters that are stored as part of an imagery group <em>group</em> or specified as individual maps in the optional <em>raster</em> parameter. Several commonly used classifiers and regressors are exposed in the GUI and the choice of classifier is set using the <em>classifier</em> parameter. For more details relating to the classifiers, refer to the <a href="http://scikit-learn.org/stable/">scikit learn documentation.</a> The following classification and regression methods are available:</p>
+<p><em>PygrassML</em> represents a front-end to the scikit learn python package. The module enables scikit-learn classification and regression models to be applied to GRASS GIS rasters that are stored as part of an imagery group <em>group</em> or specified as individual maps in the optional <em>raster</em> parameter. Several commonly used classifiers and regressors are exposed in the GUI and the choice of classifier is set using the <em>classifier</em> parameter. For more details relating to the classifiers, refer to the <a href="http://scikit-learn.org/stable/">scikit learn documentation.</a> The following classification and regression methods are available:</p>
 
 <ul>
 	<li><em>LogisticRegression</em> represents a linear model for classification and is a modification of linear regression, but using the logistic distribution which enables the use of a categorical response variable. If the <em>response</em> raster is coded to 0 and 1, then a binary classification occurs, but the scikit-learn logistic regression can also perform a multiclass classification using a one-versus-rest scheme.</li>
