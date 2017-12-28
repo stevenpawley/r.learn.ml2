@@ -1,5 +1,5 @@
 from __future__ import absolute_import
-from ._main import gsession
+from ._main import predict, gsession, gvect_to_gpd, gpd_to_gvect
 from .model_selection import specificity_score, cross_val_scores, 
 from .prediction import predict
 from .sampling import extract_pixels, extract_points
