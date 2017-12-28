@@ -17,7 +17,6 @@ from grass.pygrass.raster import numpy2raster
 def predict(estimator, predictors, output, predict_type='raw', index=None,
             class_labels=None, overwrite=False, rowincr=25, n_jobs=-2):
     """
-
     Prediction on list of GRASS rasters using a fitted scikit learn model
 
     Args
@@ -32,7 +31,6 @@ def predict(estimator, predictors, output, predict_type='raw', index=None,
     overwrite (boolean): enable overwriting of existing raster
     n_jobs (integer): Number of processing cores;
         -1 for all cores; -2 for all cores-1
-
     """
 
     from sklearn.externals.joblib import Parallel, delayed
@@ -126,7 +124,6 @@ def predict(estimator, predictors, output, predict_type='raw', index=None,
 
 def __predict_parallel(estimator, predictors, predict_type, current, row):
     """
-
     Performs prediction on a single row of a GRASS raster(s))
 
     Args
@@ -141,7 +138,6 @@ def __predict_parallel(estimator, predictors, predict_type, current, row):
     Returns
     -------
     result (2d oe 3d numpy array): Prediction results
-
     """
 
     # initialize output

@@ -4,7 +4,6 @@
 """
 The module rlearn_crossval contains functions to perform
 model validation and permutation feature importances.
-
 """
 
 from __future__ import absolute_import
@@ -17,7 +16,6 @@ import grass.script as gs
 
 def specificity_score(y_true, y_pred):
     """
-
     Calculate specificity score
 
     Args
@@ -28,7 +26,6 @@ def specificity_score(y_true, y_pred):
     Returns
     -------
     specificity (float): specificity score
-
     """
 
     from sklearn.metrics import confusion_matrix
@@ -43,7 +40,6 @@ def specificity_score(y_true, y_pred):
 def varimp_permutation(estimator, X, y, n_permutations, scorer,
                        n_jobs, random_state):
     """
-
     Method to perform permutation-based feature importance during
     cross-validation (cross-validation is applied externally to this
     method)
@@ -68,7 +64,6 @@ def varimp_permutation(estimator, X, y, n_permutations, scorer,
     Returns
     -------
     scores (2d numpy array): scores for each predictor following permutation
-
     """
 
     from sklearn.externals.joblib import Parallel, delayed
@@ -93,7 +88,6 @@ def varimp_permutation(estimator, X, y, n_permutations, scorer,
 
 def __permute(estimator, X, y, best_score, scorer, random_state):
     """
-
     Permute each predictor and measure difference from best score
 
     Args
@@ -107,7 +101,6 @@ def __permute(estimator, X, y, best_score, scorer, random_state):
     Returns
     -------
     scores (2D numpy array): scores for each predictor following permutation
-
     """
 
     rstate = RandomState(random_state)
@@ -130,7 +123,6 @@ def __permute(estimator, X, y, best_score, scorer, random_state):
 
 def __parallel_fit(estimator, X, y, groups, train_indices, sample_weight):
     """
-
     Fit classifiers/regressors in parallel
 
     Args
@@ -142,7 +134,6 @@ def __parallel_fit(estimator, X, y, groups, train_indices, sample_weight):
         training/validation
     sample_weight (1D numpy array): of len(y) containing weights to use during
         fitting
-
     """
     from sklearn.pipeline import Pipeline
 
@@ -181,7 +172,6 @@ def cross_val_scores(estimator, X, y, groups=None, sample_weight=None, cv=3,
                      scoring='accuracy', feature_importances=False,
                      n_permutations=25, random_state=None, n_jobs=-1):
     """
-
     Stratified Kfold and GroupFold cross-validation using multiple
     scoring metrics and permutation feature importances
 
@@ -205,7 +195,6 @@ def cross_val_scores(estimator, X, y, groups=None, sample_weight=None, cv=3,
     fimp (2D numpy array): permutation feature importances per feature
     clf_resamples (list): List of fitted estimators
     predictions (2d numpy array): with y_true, y_pred, fold
-
     """
 
     from sklearn import metrics
