@@ -419,20 +419,20 @@
 #%end
 
 from __future__ import absolute_import
-import atexit
-import os
 from copy import deepcopy
-import numpy as np
 from grass.pygrass.utils import set_path
-import grass.script as gs
 from grass.pygrass.modules.shortcuts import raster as r
-
-set_path('r.learn.ml')
 from rlearn_crossval import cross_val_scores
-from rlearn_sampling import extract_pixels, extract_points
+from __main import RasterStack
 from rlearn_prediction import predict
 from rlearn_utils import (
     model_classifiers, save_training_data, load_training_data, maps_from_group)
+
+import atexit
+import os
+import numpy as np
+import grass.script as gs
+set_path('r.learn.ml')
 
 tmp_rast = []
 
@@ -541,6 +541,9 @@ def main():
             except:
                 gs.fatal('Category map {0} not in the imagery group'.format(cat))
         categorymaps = cat_indexes
+
+    # create the RasterStack
+    stack = RasterStack(maplist, categorical=categorymaps)
 
     # convert class probability indexes to list
     if ',' in indexes:

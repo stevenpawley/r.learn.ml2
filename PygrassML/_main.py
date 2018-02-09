@@ -1,38 +1,85 @@
 from __future__ import absolute_import, print_function
+from copy import deepcopy
+from collections import OrderedDict
 import numpy as np
 import grass.script as gs
 from grass.pygrass.raster import RasterRow
 from grass.pygrass.gis.region import Region
-from grass.pygrass.raster import numpy2raster
+from grass.pygrass.raster.buffer import Buffer
 from grass.pygrass.vector import VectorTopo
 from grass.pygrass.utils import get_raster_for_points, pixel2coor
 
-def applier(rs, func, rowchunk=25, n_jobs=-1, **kwargs):
-    """Applies a function to a RasterStack object in image stripes"""
-    from sklearn.externals.joblib import Parallel, delayed
+
+def applier(rs, func, output=None, rowchunk=25, overwrite=False, **kwargs):
+    """Applies a function to a RasterStack object in image strips and
+    saves each strip to a GRASS raster"""
+
+    # processing region dimensions
+    reg = Region()
+    reg.set_raster_region() # set region for all raster maps in session
 
     # generator for row increments, tuple (startrow, endrow)
-    reg = Region()
     windows = ((row, row+rowchunk) if row+rowchunk <= reg.rows else
                (row, reg.rows) for row in range(0, reg.rows, rowchunk))
-    result = []
 
     # Loop through rasters strip-by-strip
-    for start, end, in windows:
-        #print_progressbar(start, rows, length=50)
-        img = rs.read(window=(start, end))
-        result.append(func(img, **kwargs))
-    
-    # perform predictions on lists of row increments in parallel
-#    result = Parallel(n_jobs=n_jobs, max_nbytes=None)(
-#        delayed(__predict_parallel2)
-#        (estimator, predictors, predict_type, current, row_min, row_max)
-#        for row_min, row_max in zip(row_mins, row_maxs))
-#    prediction = np.vstack(prediction)
+    for window in windows:
+        img = rs.read(window=window)
+        result = func(img, **kwargs)
 
-    result = np.concatenate(result, axis=1)
-    return result
+        # determine output types on first iteration
+        if window[0] == 0:                        
+            # determine raster dtype
+            if result.dtype == 'float':
+                mtype = 'FCELL'
+                nodata = np.nan
+            else:
+                mtype = 'CELL'
+                nodata = -2147483648
+            
+            # output represents a single features
+            if result.shape[0] == 1:
+                newrast = [RasterRow(output)]
+                newrast[0].open('w', mtype=mtype, overwrite=overwrite)
+            else:
+                class_labels = kwargs['class_labels']
+                index = kwargs['index']
+                # use class labels if supplied else output preds as 0,1,2...n
+                if class_labels is None:
+                    class_labels = range(result.shape[0])        
+                # output all class probabilities if subset is not specified
+                if index is None:
+                    index = class_labels
+                labels = [i for i, x in enumerate(class_labels) if x in index]
+                
+                # create and open rasters for writing
+                newrast = []
+                for pred_index, label in zip(labels, index):
+                    rastername = output + '_' + str(label)
+                    newrast.append(RasterRow(rastername))
+                    newrast[pred_index].open(
+                        'w', mtype='FCELL', overwrite=overwrite)
 
+        # writing data to GRASS raster(s))
+        result = np.ma.filled(result, nodata)
+        if result.shape[0] == 1:
+            # write single fature to a RasterRow
+            for i in range(result.shape[1]):
+                newrow = Buffer((reg.cols,), mtype=mtype)
+                newrow[:] = result[0, i, :]
+                newrast[0].put_row(newrow)
+        else:
+            # write multiple features to 
+            result = np.ma.filled(result, np.nan)
+            for pred_index in index:
+                for i in range(result.shape[1]):
+                    newrow = Buffer((reg.cols,), mtype='FCELL')
+                    newrow[:] = result[pred_index, i, :]
+                    newrast[pred_index].put_row(newrow)
+
+    res = [i.close() for i in newrast]
+
+    return res
 
 class RasterStack(object):
     """Access a group of aligned GDAL-supported raster images as a single
@@ -53,9 +100,11 @@ class RasterStack(object):
         data type of the raster
     count : int
         Number of raster layers in the RasterStack class
+    categorical : list (int)
+        Indices of rasters that represent categorical datatypes
     """
 
-    def __init__(self, rasters):
+    def __init__(self, rasters, categorical=None):
         """Create a RasterStack object
 
         Parameters
@@ -69,26 +118,37 @@ class RasterStack(object):
         
         self.names = []
         self.fullnames = []
-        self.layernames = {}
+        self.layernames = OrderedDict()
         self.mtypes = {}
         self.count = len(rasters)
+        self.categorical = []
         self.cell_nodata = -2147483648
 
+        # add rasters and metadata to stack
         for r in rasters:
             src = RasterRow(r)
             if src.exist() is True:
-                self.fullnames.append('@'.join([src.name, src.mapset]))
-                self.names.append(src.name)
-                self.mtypes.update({src.name: src.mtype})
+                ras_name = src.name.split('@')[0] # name of map sans mapset
+                full_name = '@'.join([ras_name, src.mapset]) # name of map with mapset
+                self.fullnames.append(full_name)
+                self.names.append(ras_name)
+                self.mtypes.update({full_name: src.mtype})
                 
-                validname = src.name.replace('.', '_')
-                self.layernames.update({src.name: validname})
+                validname = ras_name.replace('.', '_')
+                self.layernames.update({full_name: validname})
                 setattr(self, validname, src)
             else:
                 gs.fatal('GRASS raster map ' + r + ' does not exist')
+        
+        # extract indices of category maps
+        if categorical and categorical.strip() != '':  # needed for passing from grass parser
+            if isinstance(categorical, str):
+                categorical = [categorical]
+            self.categorical = categorical
+
 
     def read(self, row=None, window=None):
-        """Read data from RasterStack as a 3D numpy array
+        """Read data from RasterStack as a masked 3D numpy array
         
         Parameters
         ----------
@@ -110,7 +170,7 @@ class RasterStack(object):
             row_start = window[0]
             row_stop = window[1]
             width = reg.cols
-            height = abs((row_stop+1)-row_start)
+            height = abs(row_stop-row_start)
             shape = (self.count, height, width)
         else:
             row_start = row
@@ -131,7 +191,7 @@ class RasterStack(object):
             
             # mask array with nodata
             if src.mtype == 'CELL':
-                data = np.ma.mask_equal(data, self.cell_nodata)
+                data = np.ma.masked_equal(data, self.cell_nodata)
             elif src.mtype in ['FCELL', 'DCELL']:
                 data = np.ma.masked_invalid(data)
             src.close()
@@ -139,7 +199,24 @@ class RasterStack(object):
         return data
 
     @staticmethod
-    def predfun(img, **kwargs):
+    def __predfun(img, **kwargs):
+        """Prediction function for RasterStack class
+        Intended to be used internally
+        
+        Parameters
+        ----------
+        img : 3d array-like
+            3d masked numpy array for image block to pass to estimator class
+        estimator : Scikit-learn compatible estimator class
+            Scikit-learn estimator that includes a fit(X,y) method
+        
+        Returns
+        -------
+        result : 2d array-like
+            masked 2d numpy array containing classification result. Array order is in
+            (row, col).
+        """
+        
         estimator = kwargs['estimator']
         n_features, rows, cols = img.shape[0], img.shape[1], img.shape[2]
 
@@ -152,23 +229,40 @@ class RasterStack(object):
 
         # create mask for NaN values and replace with number
         flat_pixels_mask = flat_pixels.mask.copy()
+        flat_pixels = np.ma.filled(flat_pixels, -99999)
 
         # prediction
-        result_cla = estimator.predict(flat_pixels)
+        result = estimator.predict(flat_pixels)
 
         # replace mask and fill masked values with nodata value
-        result_cla = np.ma.masked_array(
-            result_cla, mask=flat_pixels_mask.any(axis=1))
-        result_cla = np.ma.filled(result_cla, fill_value=-99999)
+        result = np.ma.masked_array(
+            result, mask=flat_pixels_mask.any(axis=1))
 
         # reshape the prediction from a 1D matrix/list
         # back into the original format [band, row, col]
-        result_cla = result_cla.reshape((1, rows, cols))
-
-        return result_cla
+        result = result.reshape((1, rows, cols))
+        
+        return result
 
     @staticmethod
-    def probfun(img, **kwargs):
+    def __probfun(img, **kwargs):
+        """Prediction probabilities function for RasterStack class
+        Intended to be used internally
+        
+        Parameters
+        ----------
+        img : 3d array-like
+            3d masked numpy array for image block to pass to estimator class
+        estimator : Scikit-learn compatible estimator class
+            Scikit-learn estimator that includes a fit(X,y) method
+        
+        Returns
+        -------
+        result : 3d array-like
+            masked 3d numpy array containing classification result. Array order is in
+            (class, row, col)
+        """
+
         estimator = kwargs['estimator']
         n_features, rows, cols = img.shape[0], img.shape[1], img.shape[2]
 
@@ -181,6 +275,7 @@ class RasterStack(object):
 
         # create mask for NaN values and replace with number
         flat_pixels_mask = flat_pixels.mask.copy()
+        flat_pixels = np.ma.filled(flat_pixels, -99999)
 
         # predict probabilities
         result_proba = estimator.predict_proba(flat_pixels)
@@ -201,10 +296,8 @@ class RasterStack(object):
             result_proba,
             mask=mask2d,
             fill_value=np.nan)
-        result_proba = np.ma.filled(
-            result_proba, fill_value=-99999)
 
-        # reshape band into rasterio format [band, row, col]
+        # reshape band into raster format [band, row, col]
         result_proba = result_proba.transpose(2, 0, 1)
 
         return result_proba
@@ -223,20 +316,12 @@ class RasterStack(object):
         overwrite : bool
             Option to overwrite an existing raster
         """
-
-        result = applier(rs=self, func=self.predfun, output=output,
-                         rowchunk=rowchunk, **{'estimator': estimator})
-
-        # determine raster dtype
-        if result.dtype == 'float':
-            mtype = 'FCELL'
-        else:
-            mtype = 'CELL'
-
-        numpy2raster(array=result[0, :, :], mtype=mtype, rastname=output,
-                     overwrite=overwrite)
-
-        return None
+        
+        result = applier(rs=self, func=self.__predfun, output=output,
+                         rowchunk=rowchunk, overwrite=overwrite,
+                         **{'estimator':estimator})
+        
+        return result
 
     def predict_proba(self, estimator, output=None, class_labels=None,
                       index=None, rowchunk=25, overwrite=False):
@@ -257,34 +342,36 @@ class RasterStack(object):
         overwrite : bool
             Option to overwrite an existing raster(s)
         """
-        if isinstance(class_labels, int):
-            class_labels = [class_labels]
 
-        result = applier(rs=self, func=self.probfun, output=output,
-                         rowchunk=rowchunk, **{'estimator': estimator})
-        
-        # use class labels if supplied
-        # else output predictions as 0,1,2...n
-        if class_labels is None:
-            class_labels = range(result.shape[0])
+        if isinstance(index, int):
+            index = [index]        
 
-        # output all class probabilities if subset is not specified
-        if index is None:
-            index = class_labels
+        result = applier(rs=self, func=self.__probfun, output=output,
+                         rowchunk=rowchunk, overwrite=overwrite,
+                         **{'estimator':estimator,
+                            'class_labels': class_labels,
+                            'index': index})
 
-        # select indexes of predictions 3d numpy array to be exported to rasters
-        selected_prediction_indexes = [i for i, x in enumerate(class_labels) if x in index]
-
-        # write each 3d of numpy array as a probability raster
-        for pred_index, label in zip(selected_prediction_indexes, index):
-            rastername = output + '_' + str(label)
-            numpy2raster(array=result[pred_index, :, :], mtype='FCELL',
-                         rastname=rastername, overwrite=overwrite)
-
-        return None
+        return result
 
     @staticmethod
     def __value_extractor(img, **kwargs):
+        """Gets multidimensional array values at labelled pixel locations
+        Intended to be used internally
+        
+        Parameters
+        ----------
+        img : 3d array-like
+            3d masked numpy array containing raster data as (band, row, col)
+            order. The labelled pixels represent the last element in axis=0.
+        
+        Returns
+        -------
+        data : 2d array-like
+            2d numpy array containing sampled data and response value.
+            Array order is (n_samples, n_features) with the last n_feature
+            being the labelled pixel values (response)
+        """
         # split numpy array bands(axis=0) into labelled pixels and
         # raster data
         response_arr = img[-1, :, :]
@@ -304,56 +391,98 @@ class RasterStack(object):
 
         # combine training data, locations and labels
         data = np.vstack((data, labels))
+        
+        # convert indexes of training pixels from tuple to n*2 np array
+        is_train = np.array(is_train).T
 
-        return data
+        return (data, is_train)
 
-    def extract_pixels(self, response, na_rm=True):
-
-        if RasterRow(response).exist() is False:
-            gs.fatal('GRASS raster ' + response ' does not exist')
+    def extract_pixels(self, response, rowchunk=25, na_rm=True):
+        """Samples a list of GRASS rasters using a labelled raster
+        Per raster sampling
+    
+        Args
+        ----
+        response : str
+            Name of GRASS raster with labelled pixels
+        rowchunk : int
+            Number of rows to read at one time
+        na_rm : bool, optional
+            Remove samples containing NaNs
+    
+        Returns
+        -------
+        X : 2d array-like
+            Extracted raster values. Array order is (n_samples, n_features)
+        y :  1d array-like
+            Numpy array of labels
+        crds : 2d array-like
+            2d numpy array containing x,y coordinates of labelled pixel
+            locations
+        """
 
         # create new RasterStack object with labelled pixels as
         # last band in the stack
-        temp_stack = RasterStack(self.files + response)
+        temp_stack = RasterStack(self.fullnames + [response])
 
-        # extract training data
-        data = applier(temp_stack, self.__value_extractor)
-        data = np.concatenate(data, axis=1)
-        raster_vals = data[0:-1, :]
-        labelled_vals = data[-1, :]
+        reg = Region()
+        reg.set_raster_region() # set region for all raster maps in session
+        
+        # generator for row increments, tuple (startrow, endrow)
+        windows = ((row, row+rowchunk) if row+rowchunk <= reg.rows else
+                   (row, reg.rows) for row in range(0, reg.rows, rowchunk))
+
+        data = []
+        crds = []
+        for window in windows:
+            img = temp_stack.read(window=window)
+            training_data, crds_data = self.__value_extractor(img)
+            data.append(training_data)
+            crds.append(crds_data)
+        data = np.concatenate(data, axis=1).transpose()
+        crds = np.concatenate(crds, axis=0)
+
+        raster_vals = data[:, 0:-1]
+        labelled_vals = data[:, -1]
+        for i in range(crds.shape[0]):
+            crds[i, :] = np.array(pixel2coor(tuple(crds[i]), reg))
 
         if na_rm is True:
-            X = raster_vals[~np.isnan(raster_vals).any(axis=1)]
+            X = raster_vals[~np.isnan(crds).any(axis=1)]
             y = labelled_vals[np.where(~np.isnan(raster_vals).any(axis=1))]
+            crds = crds[~np.isnan(crds).any(axis=1)]
         else:
             X = raster_vals
             y = labelled_vals
 
-        return (X, y)
+        return (X, y, crds)
 
-    def extract_features(self, gvector, field, na_rm=False):
+    def extract_features(self, vect_name, field, na_rm=False):
         """Samples a list of GDAL rasters using a point data set
 
         Parameters
         ----------
-        y : str
+        vect_name : str
             Name of GRASS GIS vector containing point features
         field : str
             Name of attribute containing the response variable
+        na_rm : bool, optional
+            Remove samples containing NaNs
 
         Returns
         -------
-        gdf : Geopandas GeoDataFrame
-            GeoDataFrame containing extract raster values at the point
-            locations
+        X : 2d array-like
+            Extracted raster values. Array order is (n_samples, n_features)
+        y :  1d array-like
+            Numpy array of labels
         """
 
         # open grass vector
-        points = VectorTopo(gvector.split('@')[0])
+        points = VectorTopo(vect_name.split('@')[0])
         points.open('r')
     
         # create link to attribute table
-        points.dblinks.by_name(name=gvector)
+        points.dblinks.by_name(name=vect_name)
     
         # extract table field to numpy array
         table = points.table
@@ -364,13 +493,17 @@ class RasterStack(object):
         # extract raster data
         X = np.zeros((points.num_primitives()['point'], len(self.fullnames)), dtype=float)
         for i, raster in enumerate(self.fullnames):
+            region = Region()
+            old_reg = deepcopy(region)
+            region.from_rast(raster)
+            region.set_raster_region()
             rio = RasterRow(raster)
-            if rio.exist() is False:
-                gs.fatal('Raster {x} does not exist....'.format(x=raster))
-            values = np.asarray(get_raster_for_points(points, rio))
+            rio.open()
+            values = np.asarray(get_raster_for_points(points, rio, region=region))
             coordinates = values[:, 1:3]
             X[:, i] = values[:, 3]
             rio.close()
+            old_reg.set_current()
     
         # set any grass integer nodata values to NaN
         X[X == self.cell_nodata] = np.nan
@@ -397,179 +530,3 @@ class RasterStack(object):
             X = X[~np.isnan(X).any(axis=1)]
     
         return(X, y, coordinates)
-
-
-def extract_pixels(response, predictors, lowmem=False, na_rm=False):
-    """
-
-    Samples a list of GRASS rasters using a labelled raster
-    Per raster sampling
-
-    Args
-    ----
-    response (string): Name of GRASS raster with labelled pixels
-    predictors (list): List of GRASS raster names containing explanatory variables
-    lowmem (boolean): Use numpy memmap to query predictors
-    na_rm (boolean): Remove samples containing NaNs
-
-    Returns
-    -------
-    training_data (2d numpy array): Extracted raster values
-    training_labels (1d numpy array): Numpy array of labels
-    is_train (2d numpy array): Row and Columns of label positions
-
-    """
-
-    current = Region()
-
-    # open response raster as rasterrow and read as np array
-    if RasterRow(response).exist() is True:
-        roi_gr = RasterRow(response)
-        roi_gr.open('r')
-
-        if lowmem is False:
-            response_np = np.array(roi_gr)
-        else:
-            response_np = np.memmap(
-                tempfile.NamedTemporaryFile(),
-                dtype='float32', mode='w+',
-                shape=(current.rows, current.cols))
-            response_np[:] = np.array(roi_gr)[:]
-    else:
-        gs.fatal("GRASS response raster does not exist.... exiting")
-
-    # determine number of predictor rasters
-    n_features = len(predictors)
-
-    # check to see if all predictors exist
-    for i in range(n_features):
-        if RasterRow(predictors[i]).exist() is not True:
-            gs.fatal("GRASS raster " + predictors[i] +
-                          " does not exist.... exiting")
-
-    # check if any of those pixels are labelled (not equal to nodata)
-    # can use even if roi is FCELL because nodata will be nan
-    is_train = np.nonzero(response_np > -2147483648)
-    training_labels = response_np[is_train]
-    n_labels = np.array(is_train).shape[1]
-
-    # Create a zero numpy array of len training labels
-    if lowmem is False:
-        training_data = np.zeros((n_labels, n_features))
-    else:
-        training_data = np.memmap(tempfile.NamedTemporaryFile(),
-                                  dtype='float32', mode='w+',
-                                  shape=(n_labels, n_features))
-
-    # Loop through each raster and sample pixel values at training indexes
-    if lowmem is True:
-        feature_np = np.memmap(tempfile.NamedTemporaryFile(),
-                               dtype='float32', mode='w+',
-                               shape=(current.rows, current.cols))
-
-    for f in range(n_features):
-        predictor_gr = RasterRow(predictors[f])
-        predictor_gr.open('r')
-
-        if lowmem is False:
-            feature_np = np.array(predictor_gr)
-        else:
-            feature_np[:] = np.array(predictor_gr)[:]
-
-        training_data[0:n_labels, f] = feature_np[is_train]
-
-        # close each predictor map
-        predictor_gr.close()
-
-    # convert any CELL maps no datavals to NaN in the training data
-    for i in range(n_features):
-        training_data[training_data[:, i] == -2147483648] = np.nan
-
-    # convert indexes of training pixels from tuple to n*2 np array
-    is_train = np.array(is_train).T
-    for i in range(is_train.shape[0]):
-        is_train[i, :] = np.array(pixel2coor(tuple(is_train[i]), current))
-
-    # close the response map
-    roi_gr.close()
-
-    # remove samples containing NaNs
-    if na_rm is True:
-        if np.isnan(training_data).any() == True:
-            gs.message('Removing samples with NaN values in the raster feature variables...')
-        training_labels = training_labels[~np.isnan(training_data).any(axis=1)]
-        is_train = is_train[~np.isnan(training_data).any(axis=1)]
-        training_data = training_data[~np.isnan(training_data).any(axis=1)]
-
-    return(training_data, training_labels, is_train)
-
-
-def extract_points(gvector, grasters, field, na_rm=False):
-    """
-
-    Extract values from grass rasters using vector points input
-
-    Args
-    ----
-    gvector (string): Name of grass points vector
-    grasters (list): Names of grass raster to query
-    field (string): Name of field in table to use as response variable
-    na_rm (boolean): Remove samples containing NaNs
-
-    Returns
-    -------
-    X (2d numpy array): Training data
-    y (1d numpy array): Array with the response variable
-    coordinates (2d numpy array): Sample coordinates
-
-    """
-
-    # open grass vector
-    points = VectorTopo(gvector.split('@')[0])
-    points.open('r')
-
-    # create link to attribute table
-    points.dblinks.by_name(name=gvector)
-
-    # extract table field to numpy array
-    table = points.table
-    cur = table.execute("SELECT {field} FROM {name}".format(field=field, name=table.name))
-    y = np.array([np.isnan if c is None else c[0] for c in cur])
-    y = np.array(y, dtype='float')
-
-    # extract raster data
-    X = np.zeros((points.num_primitives()['point'], len(grasters)), dtype=float)
-    for i, raster in enumerate(grasters):
-        rio = RasterRow(raster)
-        if rio.exist() is False:
-            gs.fatal('Raster {x} does not exist....'.format(x=raster))
-        values = np.asarray(get_raster_for_points(points, rio))
-        coordinates = values[:, 1:3]
-        X[:, i] = values[:, 3]
-        rio.close()
-
-    # set any grass integer nodata values to NaN
-    X[X == -2147483648] = np.nan
-
-    # remove missing response data
-    X = X[~np.isnan(y)]
-    coordinates = coordinates[~np.isnan(y)]
-    y = y[~np.isnan(y)]
-
-    # int type if classes represented integers
-    if all(y % 1 == 0) is True:
-        y = np.asarray(y, dtype='int')
-
-    # close
-    points.close()
-
-    # remove samples containing NaNs
-    if na_rm is True:
-        if np.isnan(X).any() == True:
-            gs.message('Removing samples with NaN values in the raster feature variables...')
-
-        y = y[~np.isnan(X).any(axis=1)]
-        coordinates = coordinates[~np.isnan(X).any(axis=1)]
-        X = X[~np.isnan(X).any(axis=1)]
-
-    return(X, y, coordinates)
