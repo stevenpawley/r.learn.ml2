@@ -4,7 +4,7 @@ from setuptools import setup
 from setuptools.command.test import test as TestCommand
 
 setup(
-    name="PygrassML",
+    name="pygrassml",
     version="0.1",
     author="Steven Pawley",
     author_email="steven.pawley@gmail.com",
@@ -12,5 +12,5 @@ setup(
     license="GNU",
     keywords="GRASS GIS",
     url="https://github.com/stevenpawley/PygrassML",
-    packages=["PygrassML"]
+    packages=["pygrassml"]
 )
