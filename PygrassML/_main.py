@@ -494,16 +494,16 @@ class RasterStack(object):
         X = np.zeros((points.num_primitives()['point'], len(self.fullnames)), dtype=float)
         for i, raster in enumerate(self.fullnames):
             region = Region()
-            old_reg = deepcopy(region)
-            region.from_rast(raster)
-            region.set_raster_region()
+            # old_reg = deepcopy(region)
+            # region.from_rast(raster)
+            # region.set_raster_region()
             rio = RasterRow(raster)
             rio.open()
             values = np.asarray(get_raster_for_points(points, rio, region=region))
             coordinates = values[:, 1:3]
             X[:, i] = values[:, 3]
             rio.close()
-            old_reg.set_current()
+            # old_reg.set_current()
     
         # set any grass integer nodata values to NaN
         X[X == self.cell_nodata] = np.nan
