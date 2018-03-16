@@ -1,27 +1,18 @@
+#!/usr/bin/env python2
 # -*- coding: utf-8 -*-
 """
-Created on Thu Feb 08 23:07:46 2018
+Created on Thu Mar 15 23:32:03 2018
 
-@author: Steven Pawley
+@author: steven
 """
 
-from sklearn.ensemble import RandomForestClassifier
+stack = RasterStack(['lsat7_2002_10', 'lsat7_2002_20'])
+X, y, cds = stack.extract_features(vect_name='landclass96_roi@PERMANENT', field='id', na_rm=True)
+X, y, cds = stack.extract_pixels('landclass96_roi@PERMANENT')
 
-rasters = ['L8_1314_Backfilled.1', 'L8_1314_Backfilled.2', 'L8_1314_Backfilled.3', 'MRVBF_lidar15']
-
-stack = RasterStack(rasters)
-
-X, y, cds = stack.extract_features(
-    vect_name='TRAINING_Permafrost_mapped_4k_samples@permafrost',
-    field='id', na_rm=True)
-
-X, y, crds = stack.extract_pixels(
-    response='TRAINING_Permafrost_mapped_4k_samples@permafrost', na_rm=True)
-X.shape
-y.shape
-crds.shape
-
-lr = RandomForestClassifier(n_estimators=100, n_jobs=-1)
+from sklearn.linear_model import LogisticRegression
+lr = LogisticRegression()
 lr.fit(X, y)
 
-stack.predict_proba(estimator=lr, output='test', overwrite=True)
+stack.predict(estimator=lr, output='test', overwrite=True)
+stack.predict_proba(estimator=lr, output='test1', overwrite=True)
