@@ -1,41 +1,40 @@
 #!/usr/bin/env python
 # -- coding: utf-8 --
 
-"""
-The module rlearn_utils contains functinons to assist
+"""The module rlearn_utils contains functinons to assist
 with passing pre-defined scikit learn classifiers
-and other utilities for loading/saving training data.
-"""
+and other utilities for loading/saving training data."""
 
 from __future__ import absolute_import
 from subprocess import PIPE
 import numpy as np
 import os
-import grass.script as gs
 from grass.pygrass.modules.shortcuts import imagery as im
 
 
 def model_classifiers(estimator, random_state, n_jobs, p, weights=None):
-    """
+    """Provides the classifiers and parameters using by the module
 
-    Provides the classifiers and parameters using by the module
-
-    Args
-    ----
-    estimator (string): Name of scikit learn estimator
-    random_state (float): Seed to use in randomized components
-    n_jobs (integer): Number of processing cores to use;
-        -1 for all cores; -2 for all cores-1
-    p (dict): Classifier setttings (keys) and values
-    weights (string): None, or 'balanced' to add class_weights
+    Parameters
+    ----------
+    estimator : str
+        Name of scikit-learn compatible estimator object implementing ‘fit’
+    random_state : int or float
+        Seed to use in randomized components
+    n_jobs : int
+        Number of processing cores to use. -1 for all cores; -2 for all cores-1
+    p : dict
+        Classifier setttings (keys) and values
+    weights : str
+        None, or 'balanced' to add class_weights
 
     Returns
     -------
-    clf (object): Scikit-learn classifier object
-    mode (string): Flag to indicate whether classifier performs classification
-        or regression
-
-    """
+    estimator : estimator object implementing ‘fit’
+        Scikit-learn estimator object
+    mode : str
+        Flag to indicate whether classifier performs classification
+        or regression"""
 
     from sklearn.linear_model import LogisticRegression
     from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
@@ -54,137 +53,93 @@ def model_classifiers(estimator, random_state, n_jobs, p, weights=None):
         weights = 'balanced'
     else: weights = None
 
-    # optional packages that add additional classifiers here
-    if estimator == 'EarthClassifier' or estimator == 'EarthRegressor':
-        try:
-            from sklearn.pipeline import Pipeline
-            from pyearth import Earth
-
-            earth_classifier = Pipeline(
-                [('classifier', Earth(max_degree=p['max_degree'])),
-                 ('Logistic', LogisticRegression(n_jobs=n_jobs))])
-
-            classifiers = {
-                'EarthClassifier': earth_classifier,
-                'EarthRegressor': Earth(max_degree=p['max_degree'])
-                }
-        except:
-            gs.fatal('Py-earth package not installed')
-
-    elif estimator == 'LGBMClassifier' or estimator == 'LGBMRegressor':
-        try:
-            from lightgbm import LGBMClassifier, LGBMRegressor
-
-            if p['max_depth'] is None:
-                p['max_depth'] = int(-1)
-
-            classifiers = {
-                'LGBMClassifier':
-                    LGBMClassifier(learning_rate=p['learning_rate'],
-                                  n_estimators=p['n_estimators'],
-                                  max_depth=p['max_depth'],
-                                  subsample=p['subsample'],
-                                  num_leaves=p['num_leaves'],
-                                  n_jobs=n_jobs,
-                                  silent=True),
-                'LGBMRegressor':
-                    LGBMRegressor(learning_rate=p['learning_rate'],
-                                 n_estimators=p['n_estimators'],
-                                 max_depth=p['max_depth'],
-                                 subsample=p['subsample'],
-                                 num_leaves=p['num_leaves'],
-                                 n_jobs=n_jobs,
-                                 silent=True)}
-        except:
-            gs.fatal('LightGBM package not installed')
-    else:
-        # core sklearn classifiers go here
-        classifiers = {
-            'SVC': SVC(C=p['C'],
-                       class_weight=weights,
-                       probability=True,
-                       random_state=random_state),
-            'LogisticRegression':
-                LogisticRegression(C=p['C'],
+    # core sklearn classifiers go here
+    classifiers = {
+        'SVC': SVC(C=p['C'],
+                   class_weight=weights,
+                   probability=True,
+                   random_state=random_state),
+        'LogisticRegression':
+            LogisticRegression(C=p['C'],
+                               class_weight=weights,
+                               solver='liblinear',
+                               random_state=random_state,
+                               n_jobs=n_jobs,
+                               fit_intercept=True),
+        'DecisionTreeClassifier':
+            DecisionTreeClassifier(max_depth=p['max_depth'],
+                                   max_features=p['max_features'],
+                                   min_samples_split=p['min_samples_split'],
+                                   min_samples_leaf=p['min_samples_leaf'],
                                    class_weight=weights,
-                                   solver='liblinear',
+                                   random_state=random_state),
+        'DecisionTreeRegressor':
+            DecisionTreeRegressor(max_features=p['max_features'],
+                                  min_samples_split=p['min_samples_split'],
+                                  min_samples_leaf=p['min_samples_leaf'],
+                                  random_state=random_state),
+        'RandomForestClassifier':
+            RandomForestClassifier(n_estimators=p['n_estimators'],
+                                   max_features=p['max_features'],
+                                   min_samples_split=p['min_samples_split'],
+                                   min_samples_leaf=p['min_samples_leaf'],
+                                   class_weight=weights,
                                    random_state=random_state,
                                    n_jobs=n_jobs,
-                                   fit_intercept=True),
-            'DecisionTreeClassifier':
-                DecisionTreeClassifier(max_depth=p['max_depth'],
-                                       max_features=p['max_features'],
+                                   oob_score=False),
+        'RandomForestRegressor':
+            RandomForestRegressor(n_estimators=p['n_estimators'],
+                                  max_features=p['max_features'],
+                                  min_samples_split=p['min_samples_split'],
+                                  min_samples_leaf=p['min_samples_leaf'],
+                                  random_state=random_state,
+                                  n_jobs=n_jobs,
+                                  oob_score=False),
+        'ExtraTreesClassifier':
+            ExtraTreesClassifier(n_estimators=p['n_estimators'],
+                                 max_features=p['max_features'],
+                                 min_samples_split=p['min_samples_split'],
+                                 min_samples_leaf=p['min_samples_leaf'],
+                                 class_weight=weights,
+                                 random_state=random_state,
+                                 n_jobs=n_jobs,
+                                 oob_score=False),
+        'ExtraTreesRegressor':
+            ExtraTreesRegressor(n_estimators=p['n_estimators'],
+                                max_features=p['max_features'],
+                                min_samples_split=p['min_samples_split'],
+                                min_samples_leaf=p['min_samples_leaf'],
+                                random_state=random_state,
+                                n_jobs=n_jobs,
+                                oob_score=False),
+        'GradientBoostingClassifier':
+            GradientBoostingClassifier(learning_rate=p['learning_rate'],
+                                       n_estimators=p['n_estimators'],
+                                       max_depth=p['max_depth'],
                                        min_samples_split=p['min_samples_split'],
                                        min_samples_leaf=p['min_samples_leaf'],
-                                       class_weight=weights,
+                                       subsample=p['subsample'],
+                                       max_features=p['max_features'],
                                        random_state=random_state),
-            'DecisionTreeRegressor':
-                DecisionTreeRegressor(max_features=p['max_features'],
+        'GradientBoostingRegressor':
+            GradientBoostingRegressor(learning_rate=p['learning_rate'],
+                                      n_estimators=p['n_estimators'],
+                                      max_depth=p['max_depth'],
                                       min_samples_split=p['min_samples_split'],
                                       min_samples_leaf=p['min_samples_leaf'],
-                                      random_state=random_state),
-            'RandomForestClassifier':
-                RandomForestClassifier(n_estimators=p['n_estimators'],
-                                       max_features=p['max_features'],
-                                       min_samples_split=p['min_samples_split'],
-                                       min_samples_leaf=p['min_samples_leaf'],
-                                       class_weight=weights,
-                                       random_state=random_state,
-                                       n_jobs=n_jobs,
-                                       oob_score=False),
-            'RandomForestRegressor':
-                RandomForestRegressor(n_estimators=p['n_estimators'],
+                                      subsample=p['subsample'],
                                       max_features=p['max_features'],
-                                      min_samples_split=p['min_samples_split'],
-                                      min_samples_leaf=p['min_samples_leaf'],
-                                      random_state=random_state,
-                                      n_jobs=n_jobs,
-                                      oob_score=False),
-            'ExtraTreesClassifier':
-                ExtraTreesClassifier(n_estimators=p['n_estimators'],
-                                     max_features=p['max_features'],
-                                     min_samples_split=p['min_samples_split'],
-                                     min_samples_leaf=p['min_samples_leaf'],
-                                     class_weight=weights,
-                                     random_state=random_state,
-                                     n_jobs=n_jobs,
-                                     oob_score=False),
-            'ExtraTreesRegressor':
-                ExtraTreesRegressor(n_estimators=p['n_estimators'],
-                                    max_features=p['max_features'],
-                                    min_samples_split=p['min_samples_split'],
-                                    min_samples_leaf=p['min_samples_leaf'],
-                                    random_state=random_state,
-                                    n_jobs=n_jobs,
-                                    oob_score=False),
-            'GradientBoostingClassifier':
-                GradientBoostingClassifier(learning_rate=p['learning_rate'],
-                                           n_estimators=p['n_estimators'],
-                                           max_depth=p['max_depth'],
-                                           min_samples_split=p['min_samples_split'],
-                                           min_samples_leaf=p['min_samples_leaf'],
-                                           subsample=p['subsample'],
-                                           max_features=p['max_features'],
-                                           random_state=random_state),
-            'GradientBoostingRegressor':
-                GradientBoostingRegressor(learning_rate=p['learning_rate'],
-                                          n_estimators=p['n_estimators'],
-                                          max_depth=p['max_depth'],
-                                          min_samples_split=p['min_samples_split'],
-                                          min_samples_leaf=p['min_samples_leaf'],
-                                          subsample=p['subsample'],
-                                          max_features=p['max_features'],
-                                          random_state=random_state),
-            'GaussianNB': GaussianNB(),
-            'LinearDiscriminantAnalysis': LinearDiscriminantAnalysis(),
-            'QuadraticDiscriminantAnalysis': QuadraticDiscriminantAnalysis(),
-            'KNeighborsClassifier': KNeighborsClassifier(n_neighbors=p['n_neighbors'],
-                                                         weights=p['weights'],
-                                                         n_jobs=n_jobs)
-        }
+                                      random_state=random_state),
+        'GaussianNB': GaussianNB(),
+        'LinearDiscriminantAnalysis': LinearDiscriminantAnalysis(),
+        'QuadraticDiscriminantAnalysis': QuadraticDiscriminantAnalysis(),
+        'KNeighborsClassifier': KNeighborsClassifier(n_neighbors=p['n_neighbors'],
+                                                     weights=p['weights'],
+                                                     n_jobs=n_jobs)
+    }
 
     # define classifier
-    clf = classifiers[estimator]
+    estimator = classifiers[estimator]
 
     # classification or regression
     if estimator == 'LogisticRegression' \
@@ -195,32 +150,31 @@ def model_classifiers(estimator, random_state, n_jobs, p, weights=None):
         or estimator == 'GaussianNB' \
         or estimator == 'LinearDiscriminantAnalysis' \
         or estimator == 'QuadraticDiscriminantAnalysis' \
-        or estimator == 'EarthClassifier' \
-        or estimator == 'XGBClassifier' \
-        or estimator == 'LGBMClassifier' \
         or estimator == 'SVC' \
         or estimator == 'KNeighborsClassifier':
         mode = 'classification'
     else:
         mode = 'regression'
 
-    return (clf, mode)
+    return (estimator, mode)
 
 
 def save_training_data(X, y, groups, coords, file):
-    """
+    """Saves any extracted training data to a csv file
 
-    Saves any extracted training data to a csv file
-
-    Args
-    ----
-    X (2d numpy array): Numpy array containing predictor values
-    y (1d numpy array): Numpy array containing labels
-    groups (1d numpy array): Numpy array of group labels
-    coords (2d numpy array): Numpy array containing xy coordinates of samples
-    file (string): Path to a csv file to save data to
-
-    """
+    Parameters
+    ----------
+    X : 2d array-like
+        2d numpy array containing predictor values in (n_samples, n_features)
+        shape
+    y : 1d array-like
+        1d numpy array containing labels
+    groups : 1d array-like
+        1d numpy array of group labels
+    coords : 2d array-like
+        2d numpy array containing xy coordinates of samples
+    file : str
+        Path to a csv file to save data to"""
 
     # if there are no group labels, create a nan filled array
     if groups is None:
@@ -232,22 +186,24 @@ def save_training_data(X, y, groups, coords, file):
 
 
 def load_training_data(file):
-    """
+    """Loads training data and labels from a csv file
 
-    Loads training data and labels from a csv file
-
-    Args
-    ----
-    file (string): Path to a csv file to save data to
+    Parameters
+    ----------
+    file : str
+        Path to a csv file to save data to
 
     Returns
     -------
-    X (2d numpy array): Numpy array containing predictor values
-    y (1d numpy array): Numpy array containing labels
-    groups (1d numpy array): Numpy array of group labels, or None
-    coords (2d numpy array): Numpy array containing x,y coordinates of samples
-
-    """
+    X : 2d array-like
+        2d numpy array containing predictor values in (n_samples, n_features)
+        shape
+    y : 1d array-like
+        1d numpy array containing labels
+    groups : 1d array-like
+        1d numpy array of group labels, or None
+    coords : 2d array-like
+        2d numpy array containing x,y coordinates of samples"""
 
     training_data = np.loadtxt(file, delimiter=',')
     n_cols = training_data.shape[1]
@@ -269,20 +225,20 @@ def load_training_data(file):
 
 
 def maps_from_group(group):
-    """
+    """Parse individual rasters into a list from an imagery group
 
-    Parse individual rasters into a list from an imagery group
-
-    Args
-    ----
-    group (string): Name of GRASS imagery group
+    Parameters
+    ----------
+    group : str
+        Name of GRASS imagery group
 
     Returns
     -------
-    maplist (list): List containing individual GRASS raster maps
-    map_names (list): List with print friendly map names
+    maplist : list
+        List containing individual GRASS raster map names
+    map_names : list
+        List with print friendly map names"""
 
-    """
     groupmaps = im.group(group=group, flags="g",
                          quiet=True, stdout_=PIPE).outputs.stdout
 
@@ -298,13 +254,10 @@ def maps_from_group(group):
 
 def save_model(estimator, X, y, sample_coords, groups, filename):
     from sklearn.externals import joblib
-
-    joblib.dump((estimator, X, y, sample_coords, group_id), filename)
+    joblib.dump((estimator, X, y, sample_coords, groups), filename)
 
 
 def load_model(filename):
     from sklearn.externals import joblib
-    
     estimator, X, y, sample_coords, groups = joblib.load(filename)
-
     return (estimator, X, y, sample_coords, groups)

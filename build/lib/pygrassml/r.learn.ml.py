@@ -34,7 +34,7 @@
 #%end
 
 #%option G_OPT_R_INPUT
-#% key: trainingmap
+#% key: training_raster
 #% label: Labelled pixels
 #% description: Raster map with labelled pixels for training
 #% required: no
@@ -42,7 +42,7 @@
 #%end
 
 #%option G_OPT_V_INPUT
-#% key: trainingpoints
+#% key: training_points
 #% label: Vectorfile with training samples
 #% description: Vector points map where each point is used as training sample. Handling of missing values in training data can be choosen later.
 #% required: no
@@ -52,7 +52,7 @@
 #%option G_OPT_DB_COLUMN
 #% key: field
 #% label: Response attribute column
-#% description: Name of attribute column in trainingpoints table containing response values
+#% description: Name of attribute column in training_points table containing response values
 #% required: no
 #% guisection: Required
 #%end
@@ -70,7 +70,7 @@
 #% label: Classifier
 #% description: Supervised learning model to use
 #% answer: RandomForestClassifier
-#% options: LogisticRegression,LinearDiscriminantAnalysis,QuadraticDiscriminantAnalysis,KNeighborsClassifier,GaussianNB,DecisionTreeClassifier,DecisionTreeRegressor,RandomForestClassifier,RandomForestRegressor,ExtraTreesClassifier,ExtraTreesRegressor,GradientBoostingClassifier,GradientBoostingRegressor,SVC,EarthClassifier,EarthRegressor,LGBMClassifier,LGBMRegressor
+#% options: LogisticRegression,LinearDiscriminantAnalysis,QuadraticDiscriminantAnalysis,KNeighborsClassifier,GaussianNB,DecisionTreeClassifier,DecisionTreeRegressor,RandomForestClassifier,RandomForestRegressor,ExtraTreesClassifier,ExtraTreesRegressor,GradientBoostingClassifier,GradientBoostingRegressor,SVC
 #% guisection: Classifier settings
 #% required: no
 #%end
@@ -276,12 +276,6 @@
 #% guisection: Cross validation
 #%end
 
-#%flag
-#% key: r
-#% label: Make predictions for cross validation resamples
-#% description: Produce raster predictions for all cross validation resamples
-#% guisection: Cross validation
-#%end
 
 #%option G_OPT_F_OUTPUT
 #% key: errors_file
@@ -291,22 +285,8 @@
 #%end
 
 #%option G_OPT_F_OUTPUT
-#% key: preds_file
-#% label: Save cross-validation predictions to csv
-#% required: no
-#% guisection: Cross validation
-#%end
-
-#%option G_OPT_F_OUTPUT
 #% key: fimp_file
 #% label: Save feature importances to csv
-#% required: no
-#% guisection: Cross validation
-#%end
-
-#%option G_OPT_F_OUTPUT
-#% key: param_file
-#% label: Save hyperparameter search scores to csv
 #% required: no
 #% guisection: Cross validation
 #%end
@@ -376,12 +356,6 @@
 #% guisection: Optional
 #%end
 
-#%flag
-#% key: l
-#% label: Use memory swap
-#% guisection: Optional
-#%end
-
 #%option G_OPT_F_OUTPUT
 #% key: save_training
 #% label: Save training data to csv
@@ -411,22 +385,21 @@
 #%end
 
 #%rules
-#% exclusive: trainingmap,load_model
+#% exclusive: training_raster,load_model
 #% exclusive: load_training,save_training
-#% exclusive: trainingmap,load_training
-#% exclusive: trainingpoints,trainingmap
-#% exclusive: trainingpoints,load_training
+#% exclusive: training_raster,load_training
+#% exclusive: training_points,training_raster
+#% exclusive: training_points,load_training
 #%end
 
 from __future__ import absolute_import
 from copy import deepcopy
 from grass.pygrass.utils import set_path
 from grass.pygrass.modules.shortcuts import raster as r
-from rlearn_crossval import cross_val_scores
 from __main import RasterStack
-from rlearn_prediction import predict
 from rlearn_utils import (
     model_classifiers, save_training_data, load_training_data, maps_from_group)
+from rlearn_model_selection import permutation_importance
 
 import atexit
 import os
@@ -455,11 +428,11 @@ def main():
         from sklearn.model_selection import (
             GridSearchCV, GroupShuffleSplit, ShuffleSplit,
             StratifiedKFold, GroupKFold)
-        from sklearn.preprocessing import OneHotEncoder
         from sklearn.pipeline import Pipeline
         from sklearn.utils import shuffle
         from sklearn import metrics
-        from sklearn.metrics import make_scorer
+        from sklearn.metrics import make_scorer, confusion_matrix
+        from sklearn.model_selection import cross_validate, cross_val_predict
     except:
         gs.fatal("Scikit learn 0.18 or newer is not installed")
 
@@ -470,8 +443,8 @@ def main():
 
     # required gui section
     group = options['group']
-    trainingmap = options['trainingmap']
-    trainingpoints = options['trainingpoints']
+    training_raster = options['training_raster']
+    training_points = options['training_points']
     field = options['field']
     output = options['output']
 
@@ -499,14 +472,11 @@ def main():
     group_raster = options['group_raster']
     n_partitions = int(options['n_partitions'])
     tune_only = flags['t']
-    predict_resamples = flags['r']
     importances = flags['f']
     nested_cv = flags['n']
     n_permutations = int(options['n_permutations'])
     errors_file = options['errors_file']
-    preds_file = options['preds_file']
     fimp_file = options['fimp_file']
-    param_file = options['param_file']
 
     # general options
     norm_data = flags['s']
@@ -522,7 +492,6 @@ def main():
     indexes = options['indexes']
     rowincr = int(options['rowincr'])
     n_jobs = int(options['n_jobs'])
-    lowmem = flags['l']
     balance = flags['b']
 
     # fetch individual raster names from group
@@ -570,12 +539,12 @@ def main():
     if prob_only is True:
         probability = True
 
-    # check for field attribute if trainingpoints are used
-    if trainingpoints != '' and field == '':
+    # check for field attribute if training_points are used
+    if training_points != '' and field == '':
         gs.fatal('No attribute column specified for training points')
 
     # check that valid combination of training data input is present
-    if trainingpoints == '' and trainingmap == '' and load_training == '' \
+    if training_points == '' and training_raster == '' and load_training == '' \
     and model_load =='':
         gs.fatal('No training vector, raster or tabular data is present')
 
@@ -637,30 +606,30 @@ def main():
             # generate spatial clump/patch partitions
             # clump the labelled pixel raster and set the group_raster
             # to the clumped raster
-            if trainingmap != '' and cvtype == 'clumped' and group_raster == '':
-                clumped_trainingmap = 'tmp_clumped_trainingmap'
-                tmp_rast.append(clumped_trainingmap)
-                r.clump(input=trainingmap, output=clumped_trainingmap,
+            if training_raster != '' and cvtype == 'clumped' and group_raster == '':
+                clumped_training_raster = 'tmp_clumped_training_raster'
+                tmp_rast.append(clumped_training_raster)
+                r.clump(input=training_raster, output=clumped_training_raster,
                         overwrite=True, quiet=True)
-                group_raster = clumped_trainingmap
-            elif trainingmap == '' and cvtype == 'clumped':
+                group_raster = clumped_training_raster
+            elif training_raster == '' and cvtype == 'clumped':
                 gs.fatal('Cross-validation using clumped training areas ',
                               'requires raster-based training areas')
 
             # append spatial clumps or group raster to the predictors
             if group_raster != '':
-                maplist2 = deepcopy(maplist)
-                maplist2.append(group_raster)
+                stack_training = RasterStack(maplist + [group_raster])
+
             else:
-                maplist2 = maplist
+                stack_training = stack
 
             # extract training data
-            if trainingmap != '':
-                X, y, sample_coords = extract_pixels(
-                    response=trainingmap, predictors=maplist2, lowmem=lowmem, na_rm=True)
-            elif trainingpoints != '':
-                X, y, sample_coords = extract_points(
-                    trainingpoints, maplist2, field, na_rm=True)
+            if training_raster != '':
+                X, y, sample_coords = stack_training.extract_pixels(
+                    response=training_raster, height=rowincr)
+            elif training_points != '':
+                X, y, sample_coords = stack_training.extract_points(
+                    training_points, field)
             group_id = None
 
             if len(y) < 1 or X.shape[0] < 1:
@@ -737,7 +706,7 @@ def main():
 
         # classifiers that take sample_weights
         if balance is True and mode == 'classification' and classifier in (
-                'GradientBoostingClassifier', 'LGBMClassifier', 'GaussianNB'):
+                'GradientBoostingClassifier', 'GaussianNB'):
             from sklearn.utils import compute_class_weight
             class_weights = compute_class_weight(
                 class_weight='balanced', classes=(y), y=y)
@@ -754,24 +723,16 @@ def main():
 
         # onehot encoding
         if categorymaps is not None and norm_data is False:
-            enc = OneHotEncoder(categorical_features=categorymaps)
-            enc.fit(X)
-            clf = Pipeline([('onehot', OneHotEncoder(
-                categorical_features=categorymaps,
-                n_values=enc.n_values_, handle_unknown='ignore',
-                sparse=False)),  # dense because not all clf can use sparse
-                            ('classifier', clf)])
+            clf = Pipeline([
+                ('onehot', stack.dummy_encoder(X)),
+                ('classifier', clf)])
 
         # standardization and onehot encoding
         if norm_data is True and categorymaps is not None:
-            enc = OneHotEncoder(categorical_features=categorymaps)
-            enc.fit(X)
-            clf = Pipeline([('onehot', OneHotEncoder(
-                categorical_features=categorymaps,
-                n_values=enc.n_values_, handle_unknown='ignore',
-                sparse=False)),
-                            ('scaling', StandardScaler()),
-                            ('classifier', clf)])
+            clf = Pipeline([
+                ('onehot', stack.dummy_encoder(X)),
+                ('scaling', StandardScaler()),
+                ('classifier', clf)])
 
         # ---------------------------------------------------------------------
         # create the hyperparameter grid search method
@@ -799,7 +760,7 @@ def main():
         gs.message(('Fitting model using ' + classifier))
 
         # fitting ensuring that all options are passed
-        if classifier in ('GradientBoostingClassifier', 'LGBMClassifier', 'GausianNB') and balance is True:
+        if classifier in ('GradientBoostingClassifier', 'GausianNB') and balance is True:
             if isinstance(clf, Pipeline):
                 fit_params = {'classifier__sample_weight': class_weights}
             else:
@@ -817,9 +778,7 @@ def main():
             gs.message(os.linesep)
             gs.message('Best parameters:')
             gs.message(str(clf.best_params_))
-            if param_file != '':
-                param_df = pd.DataFrame(clf.cv_results_)
-                param_df.to_csv(param_file)
+
             if nested_cv is False:
                 clf = clf.best_estimator_
 
@@ -831,9 +790,6 @@ def main():
         if cv > 1 and tune_only is not True:
             if mode == 'classification' and cv > np.histogram(
 		    y, bins=np.unique(y))[0].min():
-
-		print(np.histogram(y, bins=len(np.unique(y))))
-		print(np.histogram(y, bins=np.unique(y)))
                 gs.message(os.linesep)
                 gs.message('Number of cv folds is greater than number of '
                            'samples in some classes. Cross-validation is being'
@@ -849,74 +805,62 @@ def main():
                     scoring.append('roc_auc')
                     scoring.append('matthews_corrcoef')
 
-                # perform the cross-validatation
-                scores, cscores, fimp, models, preds = cross_val_scores(
-                    clf, X, y, group_id, class_weights, outer, scoring,
-                    importances, n_permutations, random_state, n_jobs)
+                # perform the cross-validation
+                scores = cross_validate(
+                    clf, X, y, group_id, scoring, outer, n_jobs,
+                    fit_params=fit_params)
+                test_scoring = ['test_' + i for i in scoring]
+                gs.message(os.linesep)
+                gs.message(('Metric \t Mean \t Error'))
+                 
+                for sc in test_scoring:
+                    gs.message(sc + '\t' + str(scores[sc].mean()) + '\t' + str(scores[sc].std()))
 
-                # from sklearn.model_selection import cross_validate
-                # scores = cross_validate(clf, X, y, group_id, scoring, outer, n_jobs, fit_params=fit_params)
-                # test_scoring = ['test_' + i for i in scoring]
-                # gs.message(os.linesep)
-                # gs.message(('Metric \t Mean \t Error'))
-                # for sc in test_scoring:
-                #     gs.message(sc + '\t' + str(scores[sc].mean()) + '\t' + str(scores[sc].std()))
-
-                preds = np.hstack((preds, sample_coords))
-
-                for method, val in scores.iteritems():
-                    gs.message(
-                        method+":\t%0.3f\t+/-SD\t%0.3f" %
-                        (val.mean(), val.std()))
-
-                # individual class scores
+                # cross validation for individual class scores
                 if mode == 'classification' and len(np.unique(y)) != 2:
+                    y_pred = cross_val_predict(
+                        clf, X, y, group_id, outer, n_jobs,
+                        fit_params=fit_params)
+                    
+                    cm = confusion_matrix(y, y_pred)
+                    cm_normalized_rows = cm.astype('float') / cm.sum(axis=0)[:, None]
+                    cm_normalized_cols = cm.astype('float') / cm.sum(axis=1)[:, None]
+                    precision_scores = cm_normalized_rows.diagonal()
+                    recall_scores = cm_normalized_cols.diagonal()
+                    
                     gs.message(os.linesep)
-                    gs.message(
-                        'Cross validation class performance measures......:')
+                    gs.message("Precision / User's Accuracy...:")
                     gs.message('Class \t' + '\t'.join(map(str, np.unique(y))))
-
-                    for method, val in cscores.iteritems():
-                        mat_cscores = np.matrix(val)
-                        gs.message(
-                            method+':\t' + '\t'.join(
-                                map(str, np.round(
-                                        mat_cscores.mean(axis=0), 2)[0])))
-                        gs.message(
-                            method+' std:\t' + '\t'.join(
-                                map(str, np.round(
-                                        mat_cscores.std(axis=0), 2)[0])))
+                    gs.message('\t'.join(map(str, precision_scores)))
+                    
+                    gs.message(os.linesep)
+                    gs.message("Recall / Producer's Accuracy...:")
+                    gs.message('Class \t' + '\t'.join(map(str, np.unique(y))))
+                    gs.message('\t'.join(map(str, recall_scores)))
 
                 # write cross-validation results for csv file
                 if errors_file != '':
                     errors = pd.DataFrame(scores)
                     errors.to_csv(errors_file, mode='w')
 
-                # write cross-validation predictions to csv file
-                if preds_file != '':
-                    preds = pd.DataFrame(preds)
-                    preds.columns = ['y_true', 'y_pred', 'fold', 'x', 'y']
-                    preds.to_csv(preds_file, mode='w')
-                    text_file = open(preds_file + 't', "w")
-                    text_file.write(
-                        '"Integer","Real","Real","integer","Real","Real"')
-                    text_file.close()
-
                 # feature importances
                 if importances is True:
+                    perm_imp, _ = permutation_importance(
+                        estimator=clf, X, y, group_id, cv, n_permutations,
+                        scoring='accuracy', fit_params=fit_params,
+                        n_jobs=n_jobs, random_state=random_state)
+    
                     gs.message(os.linesep)
                     gs.message("Feature importances")
                     gs.message("id" + "\t" + "Raster" + "\t" + "Importance")
 
                     # mean of cross-validation feature importances
-                    for i in range(len(fimp.mean(axis=0))):
-                        gs.message(
-                            str(i) + "\t" + maplist[i] +
-                            "\t" + str(round(fimp.mean(axis=0)[i], 4)))
+                    for i in range(len(perm_imp)):
+                        gs.message(str(i) + "\t".join([maplist[i], str(perm_imp[i])]))
 
                     if fimp_file != '':
-                        np.savetxt(fname=fimp_file, X=fimp, delimiter=',',
-                                   header=','.join(maplist), comments='')
+                        np.savetxt(fname=fimp_file, X=fimp.feature_importances_,
+                                   delimiter=',', header=','.join(maplist), comments='')
     else:
         # load a previously fitted train object
         if model_load != '':
@@ -938,34 +882,18 @@ def main():
         # predict classification/regression raster
         if prob_only is False:
             gs.message('Predicting classification/regression raster...')
-            predict(estimator=clf, predictors=maplist, output=output,
-                    predict_type='raw', overwrite=gs.overwrite(),
-                    rowincr=rowincr, n_jobs=n_jobs)
-
-            if predict_resamples is True:
-                for i in range(cv):
-                    resample_name = output + '_Resample' + str(i)
-                    predict(estimator=models[i], predictors=maplist,
-                            output=resample_name, predict_type='raw',
-                            overwrite=gs.overwrite(),
-                            rowincr=rowincr, n_jobs=n_jobs)
+            stack.predict(
+                estimator=clf, output=output, height=rowincr,
+                overwrite=gs.overwrite())
 
         # predict class probabilities
         if probability is True:
             gs.message('Predicting class probabilities...')
-            predict(estimator=clf, predictors=maplist, output=output,
-                    predict_type='prob', index=indexes,
-                    class_labels=np.unique(y), overwrite=gs.overwrite(),
-                    rowincr=rowincr, n_jobs=n_jobs)
+            stack.predict_proba(
+                estimator=clf, output=output, index=indexes,
+                class_labels=np.unique(y), overwrite=gs.overwrite(),
+                height=rowincr)
 
-            if predict_resamples is True:
-                for i in range(cv):
-                    resample_name = output + '_Resample' + str(i)
-                    predict(estimator=models[i], predictors=maplist,
-                            output=resample_name, predict_type='prob',
-                            class_labels=np.unique(y), index=indexes,
-                            overwrite=gs.overwrite(),
-                            rowincr=rowincr, n_jobs=n_jobs)
     else:
         gs.message("Model built and now exiting")
 

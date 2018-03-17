@@ -6,6 +6,7 @@ from grass.pygrass.raster import RasterRow
 from grass.pygrass.gis.region import Region
 from grass.pygrass.raster.buffer import Buffer
 from grass.pygrass.vector import VectorTopo
+from grass.pygrass.messages import Messenger
 from grass.pygrass.utils import get_raster_for_points, pixel2coor
 
 
@@ -71,6 +72,32 @@ class RasterStack(object):
             if isinstance(categorical, str):
                 categorical = [categorical]
             self.categorical = categorical
+    
+    def dummy_encoder(self, X):
+        """Helper function to return a fitted
+        sklearn.preprocessing.data.OneHotEncoder object based on the
+        categorical rasters in the RasterStack
+        
+        Parameters
+        ----------
+        X : 2d-array like
+            Training data derived from the current RasterStack and including
+            categorical variables to return a fitted OneHotEncoder Object
+        
+        Returns
+        -------
+        enc : sklearn.preprocessing.data.OneHotEncoder"""
+
+        from sklearn.preprocessing import OneHotEncoder
+
+        enc = OneHotEncoder(categorical_features=self.categorical)
+        enc.fit(X)
+        enc = OneHotEncoder(
+            categorical_features=self.categorical, n_values=enc.n_values_,
+            handle_unknown='ignore', sparse=False)
+        
+        return enc
+        
 
     def read(self, row=None, window=None):
         """Read data from RasterStack as a masked 3D numpy array
@@ -134,8 +161,8 @@ class RasterStack(object):
         
         Parameters
         ----------
-        estimator : Scikit-learn compatible estimator
-            Previously fitted estimator
+        estimator : estimator object implementing ‘fit’
+            The object to use to fit the data.
         output : str
             Output name for prediction raster
         height : int
@@ -165,8 +192,11 @@ class RasterStack(object):
         dst = RasterRow(output)
         dst.open('w', mtype=mtype, overwrite=overwrite)
         
-        for window in self.row_windows(height=height):
-
+        msg = Messenger()
+        n_windows = len(self.row_windows(height=height))
+        
+        for wi, window in enumerate(self.row_windows(height=height)):
+            msg.percent(wi, n_windows, 1)
             img = self.read(window=window)
             n_features, rows, cols = img.shape[0], img.shape[1], img.shape[2]
 
@@ -209,8 +239,8 @@ class RasterStack(object):
         
         Parameters
         ----------
-        estimator : Scikit-learn compatible estimator
-            Previously fitted estimator
+        estimator : estimator object implementing ‘fit’
+            The object to use to fit the data.
         output : str
             Output name for prediction raster
         class_labels : 1d array-like, optional
@@ -250,9 +280,13 @@ class RasterStack(object):
             rastername = output + '_' + str(label)
             dst.append(RasterRow(rastername))
             dst[pred_index].open('w', mtype='FCELL', overwrite=overwrite)
+        
+        msg = Messenger()
+        n_windows = len(self.row_windows(height=height))
 
-        for window in self.row_windows(height=height):
-
+        for wi, window in enumerate(self.row_windows(height=height)):
+            msg.percent(wi, n_windows, 1)
+            
             img = self.read(window=window)
             n_features, rows, cols = img.shape[0], img.shape[1], img.shape[2]
     
@@ -273,7 +307,8 @@ class RasterStack(object):
             # reshape class probabilities back to 3D image [iclass, rows, cols]
             result = result.reshape(
                 (rows, cols, result.shape[1]))
-            flat_pixels_mask = flat_pixels_mask.reshape((rows, cols, n_features))
+            flat_pixels_mask = flat_pixels_mask.reshape(
+                (rows, cols, n_features))
     
             # flatten mask into 2d
             mask2d = flat_pixels_mask.any(axis=2)
@@ -348,12 +383,13 @@ class RasterStack(object):
 
         if region is None: 
             region = Region()
-            region.set_raster_region() # set region for all raster maps in session
+            region.set_raster_region()
         
         data = []
         crds = []
         
         for window in self.row_windows(region=region, height=height):
+            
             img = temp_stack.read(window=window)
             
             # split numpy array bands(axis=0) into labelled pixels and
@@ -395,7 +431,7 @@ class RasterStack(object):
 
         return (X, y, crds)
 
-    def extract_features(self, vect_name, field, region=None, na_rm=True):
+    def extract_points(self, vect_name, field, na_rm=True):
         """Samples a list of GDAL rasters using a point data set
 
         Parameters
@@ -412,10 +448,16 @@ class RasterStack(object):
         X : 2d array-like
             Extracted raster values. Array order is (n_samples, n_features)
         y :  1d array-like
-            Numpy array of labels"""
+            Numpy array of labels
+        
+        Notes
+        -----
+        Values of the RasterStack object are read for the full extent of the
+        supplied vector feature, i.e. current region settings are ignored.
+        If you want to extract raster data for a spatial subset of the supplied
+        point features, then clip the vector features beforehand."""
 
-        if region is None:
-            region = Region()
+        region = Region()
 
         # open grass vector
         points = VectorTopo(vect_name.split('@')[0])
@@ -426,12 +468,15 @@ class RasterStack(object):
     
         # extract table field to numpy array
         table = points.table
-        cur = table.execute("SELECT {field} FROM {name}".format(field=field, name=table.name))
+        cur = table.execute(
+            "SELECT {field} FROM {name}".format(field=field, name=table.name))
         y = np.array([np.isnan if c is None else c[0] for c in cur])
         y = np.array(y, dtype='float')
     
         # extract raster data
-        X = np.zeros((points.num_primitives()['point'], len(self.fullnames)), dtype=float)
+        X = np.zeros(
+            (points.num_primitives()['point'], len(self.fullnames)),
+            dtype=float)
         points.close()
         
         for i, raster in enumerate(self.fullnames):
@@ -439,7 +484,8 @@ class RasterStack(object):
             region.set_raster_region()
             src = RasterRow(raster)
             src.open()
-            values = np.asarray(get_raster_for_points(points, src, region=region))
+            values = np.asarray(
+                get_raster_for_points(points, src, region=region))
             coordinates = values[:, 1:3]
             X[:, i] = values[:, 3]
             src.close()
@@ -466,3 +512,5 @@ class RasterStack(object):
             X = X[~np.isnan(X).any(axis=1)]
     
         return(X, y, coordinates)
+
+
