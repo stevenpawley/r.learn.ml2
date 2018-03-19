@@ -97,7 +97,6 @@ class RasterStack(object):
             handle_unknown='ignore', sparse=False)
         
         return enc
-        
 
     def read(self, row=None, window=None):
         """Read data from RasterStack as a masked 3D numpy array
@@ -133,28 +132,32 @@ class RasterStack(object):
 
         # read from each raster
         for band, raster in enumerate(self.layernames.iteritems()):
-            # read into numpy array
-            k,v = raster
-            src = getattr(self, v)
-            src.open()
-            rowincrs = (row for row in range(row_start, row_stop))
-            for i, row in enumerate(rowincrs):
-                data[band, i, :] = src[row]
-            src.close()
+            try:
+                # read into numpy array
+                k,v = raster
+                src = getattr(self, v)
+                src.open()
+                rowincrs = (row for row in range(row_start, row_stop))
+                for i, row in enumerate(rowincrs):
+                    data[band, i, :] = src[row]
+                src.close()
+    
+                # mask array with nodata
+                if src.mtype == 'CELL':
+                    data = np.ma.masked_equal(data, self.cell_nodata)
+                elif src.mtype in ['FCELL', 'DCELL']:
+                    data = np.ma.masked_invalid(data)
+            except:
+                gs.fatal('Cannot read from raster {0}'.format(raster))
+            finally:
+                src.close()
 
-            # mask array with nodata
-            if src.mtype == 'CELL':
-                data = np.ma.masked_equal(data, self.cell_nodata)
-            elif src.mtype in ['FCELL', 'DCELL']:
-                data = np.ma.masked_invalid(data)
-
-            if isinstance(data.mask, np.bool_):
-                mask_arr = np.empty(data.shape, dtype='bool')
-                mask_arr[:] = False
-                data.mask = mask_arr
+        if isinstance(data.mask, np.bool_):
+            mask_arr = np.empty(data.shape, dtype='bool')
+            mask_arr[:] = False
+            data.mask = mask_arr
 
         return data
-       
 
     def predict(self, estimator, output=None, height=25, overwrite=False):
         """Prediction method for RasterStack class
@@ -179,6 +182,7 @@ class RasterStack(object):
         n_features, rows, cols = img.shape[0], img.shape[1], img.shape[2]
         n_samples = rows * cols
         flat_pixels = img.transpose(1, 2, 0).reshape((n_samples, n_features))
+        flat_pixels = np.ma.filled(flat_pixels, -99999)
         result = estimator.predict(flat_pixels)
 
         if result.dtype == 'float':
@@ -192,11 +196,10 @@ class RasterStack(object):
         dst = RasterRow(output)
         dst.open('w', mtype=mtype, overwrite=overwrite)
         
-        msg = Messenger()
-        n_windows = len(self.row_windows(height=height))
+        n_windows = len([i for i in self.row_windows(height=height)])
         
         for wi, window in enumerate(self.row_windows(height=height)):
-            msg.percent(wi, n_windows, 1)
+            gs.percent(wi, n_windows, 1)
             img = self.read(window=window)
             n_features, rows, cols = img.shape[0], img.shape[1], img.shape[2]
 
@@ -265,6 +268,7 @@ class RasterStack(object):
             n_features, rows, cols = img.shape[0], img.shape[1], img.shape[2]
             n_samples = rows * cols
             flat_pixels = img.transpose(1, 2, 0).reshape((n_samples, n_features))
+            flat_pixels = np.ma.filled(flat_pixels, -99999)
             result = estimator.predict_proba(flat_pixels)
             result = result.reshape((rows, cols, result.shape[1]))
             class_labels = range(result.shape[2])      
@@ -276,68 +280,69 @@ class RasterStack(object):
         
         # create and open rasters for writing
         dst = []
-        for pred_index, label in zip(labels, index):
+        for i, (pred_index, label) in enumerate(zip(labels, index)):
             rastername = output + '_' + str(label)
             dst.append(RasterRow(rastername))
-            dst[pred_index].open('w', mtype='FCELL', overwrite=overwrite)
+            dst[i].open('w', mtype='FCELL', overwrite=overwrite)
         
-        msg = Messenger()
-        n_windows = len(self.row_windows(height=height))
+        n_windows = len([i for i in self.row_windows(height=height)])
 
-        for wi, window in enumerate(self.row_windows(height=height)):
-            msg.percent(wi, n_windows, 1)
-            
-            img = self.read(window=window)
-            n_features, rows, cols = img.shape[0], img.shape[1], img.shape[2]
-    
-            # reshape each image block matrix into a 2D matrix
-            # first reorder into rows,cols,bands(transpose)
-            # then resample into 2D array (rows=sample_n, cols=band_values)
-            n_samples = rows * cols
-            flat_pixels = img.transpose(1, 2, 0).reshape(
-                (n_samples, n_features))
-    
-            # create mask for NaN values and replace with number
-            flat_pixels_mask = flat_pixels.mask.copy()
-            flat_pixels = np.ma.filled(flat_pixels, -99999)
-    
-            # predict probabilities
-            result = estimator.predict_proba(flat_pixels)
-    
-            # reshape class probabilities back to 3D image [iclass, rows, cols]
-            result = result.reshape(
-                (rows, cols, result.shape[1]))
-            flat_pixels_mask = flat_pixels_mask.reshape(
-                (rows, cols, n_features))
-    
-            # flatten mask into 2d
-            mask2d = flat_pixels_mask.any(axis=2)
-            mask2d = np.where(mask2d != mask2d.min(), True, False)
-            mask2d = np.repeat(mask2d[:, :, np.newaxis],
-                               result.shape[2], axis=2)
-    
-            # convert proba to masked array using mask2d
-            result = np.ma.masked_array(
-                result, mask=mask2d, fill_value=np.nan)
-    
-            # reshape band into raster format [band, row, col]
-            result = result.transpose(2, 0, 1)
-            
-            # write multiple features to 
-            result = np.ma.filled(result, np.nan)
-            for pred_index in index:
-                for i in range(result.shape[1]):
-                    newrow = Buffer((reg.cols,), mtype='FCELL')
-                    newrow[:] = result[pred_index, i, :]
-                    dst[pred_index].put_row(newrow)
-    
-        # close maps
-        [i.close() for i in dst]
+        try:
+            for wi, window in enumerate(self.row_windows(height=height)):
+                gs.percent(wi, n_windows, 1)
+                
+                img = self.read(window=window)
+                n_features, rows, cols = img.shape[0], img.shape[1], img.shape[2]
+        
+                # reshape each image block matrix into a 2D matrix
+                # first reorder into rows,cols,bands(transpose)
+                # then resample into 2D array (rows=sample_n, cols=band_values)
+                n_samples = rows * cols
+                flat_pixels = img.transpose(1, 2, 0).reshape(
+                    (n_samples, n_features))
+        
+                # create mask for NaN values and replace with number
+                flat_pixels_mask = flat_pixels.mask.copy()
+                flat_pixels = np.ma.filled(flat_pixels, -99999)
+        
+                # predict probabilities
+                result = estimator.predict_proba(flat_pixels)
+        
+                # reshape class probabilities back to 3D image [iclass, rows, cols]
+                result = result.reshape(
+                    (rows, cols, result.shape[1]))
+                flat_pixels_mask = flat_pixels_mask.reshape(
+                    (rows, cols, n_features))
+        
+                # flatten mask into 2d
+                mask2d = flat_pixels_mask.any(axis=2)
+                mask2d = np.where(mask2d != mask2d.min(), True, False)
+                mask2d = np.repeat(mask2d[:, :, np.newaxis],
+                                   result.shape[2], axis=2)
+        
+                # convert proba to masked array using mask2d
+                result = np.ma.masked_array(
+                    result, mask=mask2d, fill_value=np.nan)
+        
+                # reshape band into raster format [band, row, col]
+                result = result.transpose(2, 0, 1)
+                result = np.ma.filled(result, np.nan)
+                
+                # write multiple features to 
+                for output_i, index_i in enumerate(index):
+                    for row in range(result.shape[1]):
+                        newrow = Buffer((reg.cols, ), mtype='FCELL')
+                        newrow[:] = result[index_i, row, :]
+                        dst[output_i].put_row(newrow)
+        except:
+            gs.fatal('Error in raster prediction')
+        finally:
+            [i.close() for i in dst]
 
         return None
     
     def row_windows(self, region=None, height=25):
-        """Generator for row increments, tuple (startrow, endrow)
+        """Returns an iterator for row increments, tuple (startrow, endrow)
         
         Parameters
         ----------
@@ -350,7 +355,7 @@ class RasterStack(object):
             region = Region()
         
         windows = ((row, row+height) if row+height <= region.rows else
-                   (row, region.rows) for row in range(0, region.rows, height))
+           (row, region.rows) for row in range(0, region.rows, height))
         
         return windows
 
@@ -512,5 +517,3 @@ class RasterStack(object):
             X = X[~np.isnan(X).any(axis=1)]
     
         return(X, y, coordinates)
-
-
