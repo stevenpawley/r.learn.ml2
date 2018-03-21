@@ -129,6 +129,8 @@ class RasterStack(object):
             height = 1
             shape = (self.count, height, reg.cols)
         data = np.ma.zeros(shape)
+        
+        rowincrs = [i for i in range(row_start, row_stop)]
 
         # read from each raster
         for band, raster in enumerate(self.layernames.iteritems()):
@@ -137,20 +139,19 @@ class RasterStack(object):
                 k,v = raster
                 src = getattr(self, v)
                 src.open()
-                rowincrs = (row for row in range(row_start, row_stop))
+
                 for i, row in enumerate(rowincrs):
                     data[band, i, :] = src[row]
                 src.close()
     
-                # mask array with nodata
-                if src.mtype == 'CELL':
-                    data = np.ma.masked_equal(data, self.cell_nodata)
-                elif src.mtype in ['FCELL', 'DCELL']:
-                    data = np.ma.masked_invalid(data)
             except:
                 gs.fatal('Cannot read from raster {0}'.format(raster))
             finally:
                 src.close()
+
+        # mask array
+        data = np.ma.masked_equal(data, self.cell_nodata)
+        data = np.ma.masked_invalid(data)
 
         if isinstance(data.mask, np.bool_):
             mask_arr = np.empty(data.shape, dtype='bool')
