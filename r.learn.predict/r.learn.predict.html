@@ -1,14 +1,10 @@
 <h2>DESCRIPTION</h2>
 
-<p><em>r.learn.ml</em> represents a front-end to the scikit learn python package. The module enables scikit-learn classification and regression models to be applied to GRASS GIS rasters that are stored as part of an imagery group <em>group</em> or specified as individual maps in the optional <em>raster</em> parameter.</p>
-
-<p>The training component of the machine learning workflow is performed using the <em>r.learn.train</em> module. This module uses training data consisting of labelled pixels in a GRASS GIS raster map, or a GRASS GIS vector containing points, and develops a machine learning model on the rasters within a GRASS imagery group. This model needs to be saved to a file and can be automatically compressed if the .gz file extension is used.</p>
-
-<p>After a model is training, the <em>i.learn.predict</em> module needs to be called, which will retrieve the saved and pre-fitted model and apply it to a GRASS GIS imagery group.</p>
+<p><em>r.learn.predict</em> performs the prediction phase of a machine learning workflow. The user is required to load a prefitted scikit-learn estimator using the <em>load_model</em> parameter, which can be developed using the <em>r.learn.train</em> module, or can represent any fitted scikit-learn compatible estimator that is pickled to a file. The GRASS GIS imagery group to apply the model is set using the <em>group</em> parameter.</p>
 
 <h2>NOTES</h2>
 
-<p><em>r.learn.ml</em> uses the "scikit-learn" machine learning python package (version &ge; 0.20) along with the "pandas" package. These packages need to be installed within your GRASS GIS Python environment. For Linux users, these packages should be available through the linux package manager. For MS-Windows users using a 64 bit GRASS, the easiest way of installing the packages is by using the precompiled binaries from <a href="http://www.lfd.uci.edu/~gohlke/pythonlibs/">Christoph Gohlke</a> and by using the <a href="https://grass.osgeo.org/download/software/ms-windows/">OSGeo4W</a> installation method of GRASS, where the python setuptools can also be installed. You can then use 'easy_install pip' to install the pip package manager. Then, you can download the NumPy+MKL and scikit-learn .whl files and install them using 'pip install packagename.whl'. For MS-Windows with a 32 bit GRASS, scikit-learn is available in the OSGeo4W installer.</p>
+<p><em>r.learn.predict</em> is designed to keep system memory requirements relatively low. For this purpose, the rasters are read from the disk row-by-row, using the RasterRow method in PyGRASS. This however does not represent an efficient volume of data to pass to the classifiers, which are mostly multithreaded. Instead, groups of rows as passed to the estimator. The <em>chunksize</em> parameter represents the maximum memory size (in MB) for each of these blocks of data. Note that the module will consume more memory than this, especially if the estimator model was trained using multiple cores.</p>
 
 <h2>EXAMPLE</h2>
 
@@ -30,7 +26,7 @@ r.random input=landclass96 npoints=1000 raster=landclass96_roi
 <p>Then we can use these training pixels to perform a classification on the more recently obtained landsat 7 image:</p>
 <div class="code"><pre>
 r.learn.train group=lsat7_2000 training_map=landclass96_roi \
-	model_name=RandomForestClassifier n_estimators=500 save_model=rf_model.gz
+  model_name=RandomForestClassifier n_estimators=500 save_model=rf_model.gz
 
 r.learn.predict group=lsat7_2000 load_model=rf_model.gz output=rf_classification
 
@@ -47,7 +43,6 @@ r.category rf_classification
 </center>
 
 <h2>ACKNOWLEDGEMENTS</h2>
-
 <p>Thanks for Paulo van Breugel and Vaclav Petras for testing.</p>
 
 <h2>REFERENCES</h2>
@@ -59,5 +54,4 @@ r.category rf_classification
 <h2>AUTHOR</h2>
 
 Steven Pawley
-
 <p><em>Last changed: $Date: 2019-02-08 15:41:00 -0600 (Fri, 08 Feb 2019) $</em></p>
