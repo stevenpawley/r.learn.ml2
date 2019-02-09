@@ -14,6 +14,7 @@ from grass.pygrass.vector import VectorTopo
 from grass.pygrass.utils import get_raster_for_points
 from grass.pygrass.modules.shortcuts import general as g
 from grass.pygrass.modules.shortcuts import raster as r
+from grass.pygrass.modules.shortcuts import imagery as im
 from grass.pygrass import modules
 from subprocess import PIPE
 
@@ -29,13 +30,16 @@ class RasterStack(object):
     removed using the drop() method.
     """
 
-    def __init__(self, rasters, categorical_names=None):
+    def __init__(self, rasters=None, group=None, categorical_names=None):
         """
         Args
         ----
 
         rasters : list, or str
             List of names of GRASS GIS raster maps to initiated the class
+        
+        group : str
+            GRASS GIS imagery group to obtain a set of raster maps from
 
         categorical_names : list, optional
             List of names of GRASS GIS rasters that represent categorical
@@ -72,6 +76,11 @@ class RasterStack(object):
         self.count = 0         # number of RasterRow objects in the stack
         self.categorical = []  # list of indices of GRASS GIS rasters in stack representing categorical data
         self._cell_nodata = -2147483648
+        
+        if group:
+            
+            map_list = im.group(group=group, flags=["l", "g"], stdout_=PIPE)
+            rasters = map_list.outputs.stdout.split(os.linesep)[:-1]
         
         self._layers = None    # set proxy for self._layers
         self.layers = (rasters, categorical_names)  # call property
@@ -595,13 +604,16 @@ class RasterStack(object):
         If you want to extract raster data for a spatial subset of the supplied
         point features, then clip the vector features beforehand.
         """
-
-        region = Region()
+        
+        if isinstance(fields, str):
+            fields = [fields]
         
         # collapse list of fields to comma separated string
-        if isinstance(fields, list) and len(fields) > 1:
-            fields = ','.join(fields)
-
+        if len(fields) > 1:
+            field_names = ','.join(fields)
+        else:
+            field_names = ''.join(fields)
+    
         # open grass vector
         points = VectorTopo(vect_name.split('@')[0])
         points.open('r')
@@ -620,26 +632,32 @@ class RasterStack(object):
         con = sqlite3.connect(sqlpath)
         df = pd.read_sql_query(
                 "SELECT {fields} FROM {name}".format(
-                        fields=fields, name=table.name), con)
-        y = df[fields.split(',')].values
+                        fields=field_names, name=table.name), con)
+        y = df[fields].values
+        df = None
         con.close()
 
         # extract raster data
         X = np.zeros(
-            (points.num_primitives()['point'], len(self.full_names)),
+            (points.num_primitives()['point'], self.count),
             dtype=float)
+        
+        for i, src in enumerate(self.iloc):
+            try:
+                src.open()
+                values = np.asarray(
+                    get_raster_for_points(points, src))
+                X[:, i] = values[:, 3]
+            except:
+                gs.fatal("Problem reading raster " + src.fullname())
+            finally:
+                src.close()
+
         points.close()
 
-        for i, raster in enumerate(self.full_names):
-            region.from_rast(raster)
-            region.set_raster_region()
-            src = RasterRow(raster)
-            src.open()
-            values = np.asarray(
-                get_raster_for_points(points, src, region=region))
-            coordinates = values[:, 1:3]
-            X[:, i] = values[:, 3]
-            src.close()
+        # get coordinate and id values
+        coordinates = values[:, 1:3]
+        ids = values[:, 0]
 
         # set any grass integer nodata values to NaN
         X[X == self._cell_nodata] = np.nan
@@ -653,6 +671,7 @@ class RasterStack(object):
         X = X[~na_rows]
         coordinates = coordinates[~na_rows]
         y = y[~na_rows]
+        ids = ids[~na_rows]
 
         # int type if classes represented integers
         if (y % 1).all() == 0:
@@ -669,8 +688,8 @@ class RasterStack(object):
             X = X[~np.isnan(X).any(axis=1)]
         
         if as_df is True:
-            df = pd.DataFrame(data=np.column_stack((coordinates, y, X)),
-                              columns = ['x', 'y'] + fields + self.names)
+            df = pd.DataFrame(data=np.column_stack((ids, coordinates, y, X)),
+                              columns = ['id', 'x', 'y'] + fields + self.names)
             return df
 
         return(X, y, coordinates)
