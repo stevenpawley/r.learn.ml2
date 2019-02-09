@@ -79,7 +79,8 @@ class RasterStack(object):
         
         if group:
             
-            map_list = im.group(group=group, flags=["l", "g"], stdout_=PIPE)
+            map_list = im.group(group=group, flags=["l", "g"], quiet=True, 
+                                stdout_=PIPE)
             rasters = map_list.outputs.stdout.split(os.linesep)[:-1]
         
         self._layers = None    # set proxy for self._layers
