@@ -647,9 +647,9 @@ class RasterStack(object):
                 
                 print(raster.fullname())
                                 
-                values = []
-                coords = []
-                ids = []
+                values = np.zeros((points.num_primitives()['point']))
+                coordinates = np.zeros((points.num_primitives()['point'], 2))
+                ids = np.zeros((points.num_primitives()['point']))
                 
                 for idx, p in enumerate(points.viter('points')):
                     
@@ -660,17 +660,13 @@ class RasterStack(object):
                     else:
                         val = None
                     
-                    values.append(val)
-                    coords.append(p.coords())
-                    ids.append(idx)
+                    values[i] = val
+                    coordinates[i, :] = p.coords()
+                    ids[i] = idx
                             
-            X[:, i] = np.asarray(values)
+            X[:, i] = values
                 
         points.close()
-
-        # get coordinate and id values
-        coordinates = np.asarray(coords)
-        ids = np.asarray(ids)
 
         # set any grass integer nodata values to NaN
         X[X == self._cell_nodata] = np.nan
