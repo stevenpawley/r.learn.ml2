@@ -1,5 +1,5 @@
 # r.learn.ml
-Python package for applying machine learning to GRASS GIS spatial data
+GRASS GIS add-on for applying machine learning to GRASS GIS spatial data
 
 <h2>DESCRIPTION</h2>
 
