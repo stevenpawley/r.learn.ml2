@@ -3,7 +3,7 @@ MODULE_TOPDIR = ../../..
 include $(MODULE_TOPDIR)/include/Make/Other.make
 include $(MODULE_TOPDIR)/include/Make/Python.make
 
-MODULES = model_selection raster utils
+MODULES = model_selection raster utils indexing
 
 ETCDIR = $(ETC)/r.learn.ml
 

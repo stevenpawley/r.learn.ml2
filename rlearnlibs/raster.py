@@ -1,6 +1,5 @@
 #!/usr/bin/env python
 from __future__ import absolute_import, print_function
-from collections import OrderedDict
 import numpy as np
 import grass.script as gs
 import pandas as pd
@@ -11,39 +10,28 @@ from grass.pygrass.raster import RasterRow
 from grass.pygrass.gis.region import Region
 from grass.pygrass.raster.buffer import Buffer
 from grass.pygrass.vector import VectorTopo
-from grass.pygrass.utils import get_raster_for_points
 from grass.pygrass.modules.shortcuts import general as g
 from grass.pygrass.modules.shortcuts import raster as r
+from grass.pygrass.modules.shortcuts import vector as v
 from grass.pygrass.modules.shortcuts import imagery as im
 from grass.pygrass import modules
 from subprocess import PIPE
+from collections import Counter
 
+from indexing import ExtendedDict, LinkedList
 
 class RasterStack(object):
-    """
-    Flexible class to represent a collection of RasterRow objects
-    
-    A RasterStack is initiated from a list of RasterRow objects
 
-    Additional RasterRow objects can be added to the existing RasterStack
-    object using the append() method. Any RasterRow object can also be 
-    removed using the drop() method.
-    """
-
-    def __init__(self, rasters=None, group=None, categorical_names=None):
+    def __init__(self, rasters=None, group=None):
         """
         Args
         ----
 
         rasters : list, or str
-            List of names of GRASS GIS raster maps to initiated the class
+            List of names of GRASS GIS raster maps
         
         group : str
             GRASS GIS imagery group to obtain a set of raster maps from
-
-        categorical_names : list, optional
-            List of names of GRASS GIS rasters that represent categorical
-            map data
         
         Attributes
         ----------
@@ -53,14 +41,7 @@ class RasterStack(object):
         
         iloc : int
             Index-based indexing of RasterRow objects within the RasterStack
-        
-        names : list
-            List of syntatically-valid names of GRASS GIS raster maps
-        
-        full_names : list
-            List of names of GRASS GIS raster maps including mapset names if
-            supplied
-        
+                        
         mtypes : dict
             Dict of key, value pairs of full_names and GRASS data types
         
@@ -68,79 +49,113 @@ class RasterStack(object):
             Number of RasterRow objects within the RasterStack
         """
 
-        self.loc = {}          # name-based indexing of RasterRow objects
-        self.iloc = []         # index-based indexing of RasterRow objects
-        self.names = []        # names of GRASS GIS rasters modified to be synatically-valid
-        self.full_names = []   # names of GRASS GIS rasters including mapset names if supplied
-        self.mtypes = {}       # key, value pairs of full name and GRASS data type
-        self.count = 0         # number of RasterRow objects in the stack
-        self.categorical = []  # list of indices of GRASS GIS rasters in stack representing categorical data
+        self.loc = ExtendedDict(self)           # label-based indexing
+        self.iloc = LinkedList(self, self.loc)  # integer-based indexing
+        self.mtypes = {}                        # key, value pairs of full name and GRASS data type
+        self.count = 0                          # number of RasterRow objects in the stack
+        self._categorical_idx = []              # indexes of categorical rasters in stack
         self._cell_nodata = -2147483648
         
+        # some checks
+        if rasters and group:
+            gs.fatal('arguments "rasters" and "group" are mutually exclusive')
+        
         if group:
-            
             map_list = im.group(group=group, flags=["l", "g"], quiet=True, 
                                 stdout_=PIPE)
             rasters = map_list.outputs.stdout.split(os.linesep)[:-1]
         
-        self._layers = None    # set proxy for self._layers
-        self.layers = (rasters, categorical_names)  # call property
+        self.layers = rasters  # call property
         
-    def __getitem__(self, layer_name):
+    def __getitem__(self, label):
         """
-        Get a RasterLayer within the Raster object using label-based indexing
+        Subset the RasterStack object using a label or list of labels
+        
+        Args
+        ----
+        label : str, list
+            
+        Returns
+        -------
+        A new RasterStack object only containing the subset of layers specified
+        in the label argument
         """
+        
+        if isinstance(label, str):
+            label = [label]
+        
+        subset_layers = []
+        
+        for i in label:
+            
+            if i in self.names is False:
+                raise KeyError('layername not present in Raster object')
+            else:
+                subset_layers.append(self.loc[i])
+            
+        subset_raster = RasterStack(subset_layers)
+        subset_raster.rename(
+            {old : new for old, new in zip(subset_raster.names, label)})
+        
+        return subset_raster
 
-        if layer_name in self.names is False:
-            raise AttributeError('layername not present in RasterStack object')
-
-        return getattr(self, layer_name)
-
-    def iterlayers(self):
+    def __setitem__(self, key, value):
         """
-        Iterate over Raster object layers
+        Replace a RasterLayer within the Raster object with a new RasterLayer
+        
+        Note that this modifies the Raster object in place
+        
+        Args
+        ----
+        key : str
+            key-based index of layer to be replaced
+        
+        value : RasterRow object
+            RasterRow to use for replacement
         """
+        
+        self.loc[key] = value
+        self.iloc[self.names.index(key)] = value
+        setattr(self, key, value)
 
-        for k, v in self.loc.items():
-            yield k, v
+    def __iter__(self):
+        """
+        Iterate over RasterRow objects
+        """
+        return(iter(self.loc.items()))
+    
+    @property
+    def names(self):
+        """
+        Return the names of the RasterRow objects in the RasterStack
+        """
+        return list(self.loc.keys())
 
     @property
     def layers(self):
-        """
-        Getter method for file names within the Raster object
-        """
-
-        return self._layers
+        return self.loc
 
     @layers.setter
     def layers(self, layers):
         """
-        Setter method for the layers attribute in the RasterStack object
+        Setter method for the layers attribute in the RasterStack
         """
         
-        layers, categorical_names = layers
-
         # some checks
         if isinstance(layers, str):
             layers = [layers]
-        
-        if all(isinstance(x, type(layers[0])) for x in layers) is False:
-            raise ValueError("Cannot create a RasterStack object from a mixture of input types")
-        
+                
         # reset existing attributes
         for name in self.names:
             delattr(self, name)
 
         layer_names = [i.split('@')[0] for i in layers]
-        mapset_names = [i.split('@')[1] if '@' in i else '' for i in layers ]
+        mapset_names = [i.split('@')[1] if '@' in i else '' for i in layers]
 
-        self.iloc = []
-        self.loc = OrderedDict()
+        self.loc = ExtendedDict(self)
+        self.iloc = LinkedList(self, self.loc)
         self.count = len(layers)
-        self.full_names = []
         self.mtypes = {}
-        self.categorical = []
-        self._layers = layers
         
         # add rasters and metadata to stack
         for layer, mapset in zip(layer_names, mapset_names):
@@ -149,32 +164,134 @@ class RasterStack(object):
 
                 if src.exist() is True:
     
-                    ras_name = src.name.split('@')[0]  # name of map sans mapset
-                    full_name = src.name_mapset()  # name with mapset
-                    valid_name = ras_name.replace('.', '_')  # syntactically correct name
+                    ras_name = src.name.split('@')[0]  # name sans mapset
+                    full_name = src.name_mapset()      # name with mapset
+                    valid_name = ras_name.replace('.', '_')
     
-                    self.full_names.append(full_name)
-                    self.names.append(ras_name)
-                    self.mtypes.update({full_name: src.mtype})
-    
-                    self.loc.update({valid_name: src})
-                    self.iloc.append(src)
-    
+                    self.mtypes.update({full_name: src.mtype})    
+                    self.loc[valid_name] = src    
                     setattr(self, valid_name, src)
                 
                 else:
                     gs.fatal('GRASS raster map ' + r + ' does not exist')
+    
+    @property
+    def categorical(self):
+        return self._categorical_idx
+    
+    @categorical.setter
+    def categorical(self, names):
+        """
+        Update the RasterStack categorical map indexes
+        """
         
-        # extract indices of category maps
-        if categorical_names is not None:
-                
-            # check that each category map is also in the imagery group
-            for cat in categorical_names:
-                try:
-                    self.categorical.append(self.full_names.index(cat))
-                except ValueError:
-                    gs.fatal('Category map {0} not in the imagery group'.format(cat))
+        if isinstance(names, str):
+            names = [names]
+            
+        indexes = []
+        
+        # check that each category map is also in the imagery group
+        for n in names:
+            
+            try:
+                indexes.append(self.names.index(n))
+            
+            except ValueError:
+                gs.fatal('Category map {0} not in the imagery group'.format(n))
+        
+        self._categorical_idx = indexes
 
+
+    def append(self, other):
+        """
+        Setter method to add new RasterLayers to a Raster object
+        
+        Note that this modifies the Raster object in-place
+
+        Args
+        ----
+        other : Raster object or list of Raster objects
+        """
+        
+        if isinstance(other, str):
+            other = [other]
+
+        for new_raster in other:
+        
+            # check that other raster does not result in duplicated names
+            combined_names = self.names + new_raster.names
+            
+            counts = Counter(combined_names)
+            for s, num in counts.items():
+                if num > 1:
+                    for suffix in range(1, num + 1):
+                        if s + "_" + str(suffix) not in combined_names:
+                            combined_names[combined_names.index(s)] = s + "_" + str(suffix)
+                        else:
+                            i = 1
+                            while s + "_" + str(i) in combined_names:
+                                i += 1
+                            combined_names[combined_names.index(s)] = s + "_" + str(i)
+
+            # update layers and names
+            self.layers = (list(self.loc.values()) + 
+                           list(new_raster.loc.values()),
+                           combined_names)
+
+    def drop(self, names):
+        """
+        Drop individual rasters from the RasterStack
+        
+        Note that this modifies the RasterStack in-place
+
+        Args
+        ----
+        names : single label or list-like
+            Index (int) or name of GRASS raster to drop.
+            Can be a single integer or name, or a list of integers or labels
+        """
+
+        # convert single label to list
+        if isinstance(names, (str, int)):
+            names = [names]
+
+        # numerical index based subsetting
+        if len([i for i in names if isinstance(i, int)]) == len(names):
+            
+            subset_layers = [v for (i, v) in enumerate(list(self.loc.values())) if i not in names]
+            subset_names = [v for (i, v) in enumerate(self.names) if i not in names]
+            
+        # str label based subsetting
+        elif len([i for i in names if isinstance(i, str)]) == len(names):
+            
+            subset_layers = [v for (i, v) in enumerate(list(self.loc.values())) if self.names[i] not in names]
+            subset_names = [v for (i, v) in enumerate(self.names) if self.names[i] not in names]
+
+        else:
+            raise ValueError('Cannot drop layers based on mixture of indexes and labels')
+        
+        # get grass raster names from the rasterrow objects
+        subset_layers = [i.name for i in subset_layers]
+        
+        # update RasterStack with remaining maps and keep existing names
+        self.layers = subset_layers
+        self.rename({k:v for k,v in zip(self.names, subset_names)})
+
+    def rename(self, names):
+        """
+        Rename a RasterLayer within the Raster object
+        
+        Note that this modifies the Raster object in-place
+
+        Args
+        ----
+        names : dict
+            dict of old_name : new_name
+        """
+        
+        for old_name, new_name in names.items():
+            self.loc[new_name] = self.loc.pop(old_name)
+    
     def read(self, row=None, window=None):
         """
         Read data from RasterStack as a masked 3D numpy array
@@ -487,222 +604,6 @@ class RasterStack(object):
                     
         return X, y, coordinates
 
-#    def extract_pixels(self, response, height=25, region=None, na_rm=True):
-#        """
-#        Samples a list of GRASS rasters using a labelled raster
-#        Per raster sampling
-#
-#        Args
-#        ----
-#        response : str
-#            Name of GRASS raster with labelled pixels
-#        height : int
-#            Number of rows to read at one time
-#        na_rm : bool, optional
-#            Remove samples containing NaNs
-#
-#        Returns
-#        -------
-#        X : 2d array-like
-#            Extracted raster values. Array order is (n_samples, n_features)
-#        y :  1d array-like
-#            Numpy array of labels
-#        crds : 2d array-like
-#            2d numpy array containing x,y coordinates of labelled pixel
-#            locations
-#        """
-#
-#        # create new RasterStack object with labelled pixels as
-#        # last band in the stack
-#        temp_stack = RasterStack(self.full_names + [response])
-#
-#        if region is None:
-#            region = Region()
-#            region.set_raster_region()
-#
-#        data = []
-#        crds = []
-#
-#        for window in self.row_windows(region=region, height=height):
-#
-#            img = temp_stack.read(window=window)
-#
-#            # split numpy array bands(axis=0) into labelled pixels and
-#            # raster data
-#            response_arr = img[-1, :, :]
-#            raster_arr = img[0:-1, :, :]
-#
-#            # returns indices of labelled values and values
-#            val_indices = np.nonzero(~response_arr.mask)
-#            labels = response_arr.data[val_indices]
-#
-#            # extract data at labelled pixel locations
-#            values = raster_arr[:, val_indices[0], val_indices[1]]
-#            values = values.filled(np.nan)
-#
-#            # combine training data, locations and labels
-#            values = np.vstack((values, labels))
-#            val_indices = np.array(val_indices).T
-#
-#            data.append(values)
-#            crds.append(val_indices)
-#
-#        data = np.concatenate(data, axis=1).transpose()
-#        crds = np.concatenate(crds, axis=0)
-#
-#        raster_vals = data[:, 0:-1]
-#        labelled_vals = data[:, -1]
-#
-#        for i in range(crds.shape[0]):
-#            crds[i, :] = np.array(pixel2coor((crds[i]), region))
-#
-#        if na_rm is True:
-#            X = raster_vals[~np.isnan(crds).any(axis=1)]
-#            y = labelled_vals[np.where(~np.isnan(raster_vals).any(axis=1))]
-#            crds = crds[~np.isnan(crds).any(axis=1)]
-#        else:
-#            X = raster_vals
-#            y = labelled_vals
-#
-#        return (X, y, crds)
-
-    def extract_points2(self, vect_name, fields, na_rm=True, as_df=False):
-        """
-        Samples a list of GDAL rasters using a point data set
-
-        Parameters
-        ----------
-        vect_name : str
-            Name of GRASS GIS vector containing point features
-            
-        fields : list, str
-            Name of attribute(s) containing the response variable(s)
-            
-        na_rm : bool, optional, default = True
-            Remove samples containing NaNs
-        
-        as_df : bool, optional, default = False
-            Extract data to pandas dataframe
-
-        Returns
-        -------
-        X : 2d array-like
-            Extracted raster values. Array order is (n_samples, n_features)
-            
-        y :  1d array-like
-            Numpy array of labels
-        
-        coordinates : 2d array-like
-            2d array of x, y coordiantes of samples
-        
-        df : pandas.DataFrame
-            Extracted raster values as pandas dataframe if as_df = True
-
-        Notes
-        -----
-        Values of the RasterStack object are read for the full extent of the
-        supplied vector feature, i.e. current region settings are ignored.
-        If you want to extract raster data for a spatial subset of the supplied
-        point features, then clip the vector features beforehand.
-        """
-        
-        from grass.pygrass.utils import coor2pixel
-        reg = Region()
-        
-        if isinstance(fields, str):
-            fields = [fields]
-        
-        # collapse list of fields to comma separated string
-        if len(fields) > 1:
-            field_names = ','.join(fields)
-        else:
-            field_names = ''.join(fields)
-    
-        # open grass vector
-        points = VectorTopo(vect_name.split('@')[0])
-        points.open('r')
-
-        # create link to attribute table
-        points.dblinks.by_name(name=vect_name)
-
-        # extract table field to numpy array
-        table = points.table
-        sqlpath = gs.read_command("db.databases", driver="sqlite").strip(os.linesep)
-        con = sqlite3.connect(sqlpath)
-        df = pd.read_sql_query(
-                "SELECT {fields} FROM {name}".format(
-                        fields=field_names, name=table.name), con)
-        y = df[fields].values
-        df = None
-        con.close()
-
-        # extract raster data
-        X = np.zeros(
-            (points.num_primitives()['point'], self.count),
-            dtype=float)
-        
-        for i, raster in enumerate(self.iloc):
-            
-            with RasterRow(raster.fullname()) as src:
-                
-                print(raster.fullname())
-                                
-                values = np.zeros((points.num_primitives()['point']))
-                coordinates = np.zeros((points.num_primitives()['point'], 2))
-                ids = np.zeros((points.num_primitives()['point']))
-                
-                for idx, p in enumerate(points.viter('points')):
-                    
-                    row, col = coor2pixel(p.coords(), reg)
-                    
-                    if row > 0 and row < src.info.rows and col > 0 and col < src.info.cols:
-                        val = src[int(row)][int(col)]
-                    else:
-                        val = None
-                    
-                    values[i] = val
-                    coordinates[i, :] = p.coords()
-                    ids[i] = idx
-                            
-            X[:, i] = values
-                
-        points.close()
-
-        # set any grass integer nodata values to NaN
-        X[X == self._cell_nodata] = np.nan
-
-        # remove rows with missing response data
-        if len(y.shape) > 1:
-            na_rows = np.isnan(y).any(axis=1)
-        else:
-            na_rows = np.isnan(y)
-        
-        X = X[~na_rows]
-        coordinates = coordinates[~na_rows]
-        y = y[~na_rows]
-        ids = ids[~na_rows]
-
-        # int type if classes represented integers
-        if (y % 1).all() == 0:
-            y = y.astype('int')
-
-        # remove samples containing NaNs
-        if na_rm is True:
-            if np.isnan(X).any() == True:
-                gs.message('Removing samples with NaN values in the ' +
-                           'raster feature variables...')
-
-            y = y[~np.isnan(X).any(axis=1)]
-            coordinates = coordinates[~np.isnan(X).any(axis=1)]
-            X = X[~np.isnan(X).any(axis=1)]
-        
-        if as_df is True:
-            df = pd.DataFrame(data=np.column_stack((ids, coordinates, y, X)),
-                              columns = ['id', 'x', 'y'] + fields + self.names)
-            return df
-
-        return(X, y, coordinates)
-
     def extract_points(self, vect_name, fields, na_rm=True, as_df=False):
         """
         Samples a list of GDAL rasters using a point data set
@@ -724,16 +625,15 @@ class RasterStack(object):
         Returns
         -------
         X : 2d array-like
-            Extracted raster values. Array order is (n_samples, n_features)
+            Extracted raster values with shape (n_samples, n_features)
             
-        y :  1d array-like
-            Numpy array of labels
-        
-        coordinates : 2d array-like
-            2d array of x, y coordiantes of samples
-        
+        y : array-like
+            array of labels with shape (n_samples, n_fields)
+                
         df : pandas.DataFrame
             Extracted raster values as pandas dataframe if as_df = True
+            The coordinates of the sampled data are also returned as x, y
+            columns and the index of the dataframe uses the GRASS cat field
 
         Notes
         -----
@@ -753,49 +653,40 @@ class RasterStack(object):
             field_names = ''.join(fields)
     
         # open grass vector
-        points = VectorTopo(vect_name.split('@')[0])
-        points.open('r')
-
-        # create link to attribute table
-        points.dblinks.by_name(name=vect_name)
-
-        # extract table field to numpy array
-        table = points.table
-#        cur = table.execute(
-#            "SELECT {fields} FROM {name}".format(fields=fields, name=table.name))
-#        y = np.array([np.isnan if c is None else c[0] for c in cur])
-#        y = np.array(y, dtype='float')
-        
-        sqlpath = gs.read_command("db.databases", driver="sqlite").strip(os.linesep)
-        con = sqlite3.connect(sqlpath)
-        df = pd.read_sql_query(
-                "SELECT {fields} FROM {name}".format(
-                        fields=field_names, name=table.name), con)
-        y = df[fields].values
-        df = None
-        con.close()
-
-        # extract raster data
-        X = np.zeros(
-            (points.num_primitives()['point'], self.count),
-            dtype=float)
-        
-        for i, src in enumerate(self.iloc):
-            try:
-                src.open()
-                values = np.asarray(
-                    get_raster_for_points(points, src))
-                X[:, i] = values[:, 3]
-            except:
-                gs.fatal("Problem reading raster " + src.fullname())
-            finally:
-                src.close()
-
-        points.close()
-
-        # get coordinate and id values
-        coordinates = values[:, 1:3]
-        ids = values[:, 0]
+        with VectorTopo(vect_name.split('@')[0], mode='r') as points:
+    
+            # create link to attribute table
+            points.dblinks.by_name(name=vect_name)
+    
+            # extract table field to numpy array
+            table = points.table        
+            sqlpath = gs.read_command("db.databases", driver="sqlite").strip(os.linesep)
+            con = sqlite3.connect(sqlpath)
+            df = pd.read_sql_query(
+                    "SELECT {fields} FROM {name}".format(
+                            fields=field_names, name=table.name), con)
+            y = df[fields].values
+            df = None
+            con.close()
+    
+            # extract raster data
+            X = np.zeros((points.num_primitives()['point'], self.count),
+                         dtype=float)
+    
+            for i, src in enumerate(self.iloc):
+                rast_data = v.what_rast(
+                    map=vect_name,
+                    raster=src.fullname(),
+                    flags='p', stdout_=PIPE).outputs.stdout
+                rast_data = rast_data.split(os.linesep)[:-1]
+                X[:, i] = np.asarray([k.split('|')[1] for k in rast_data])
+            
+            cat = np.asarray([k.split('|')[0] for k in rast_data])
+            
+            # get coordinate and id values
+            coordinates = np.zeros((points.num_primitives()['point'], 2))
+            for i, p in enumerate(points.viter(vtype='points')):
+                coordinates[i, :] = np.asarray(p.coords())
 
         # set any grass integer nodata values to NaN
         X[X == self._cell_nodata] = np.nan
@@ -809,7 +700,7 @@ class RasterStack(object):
         X = X[~na_rows]
         coordinates = coordinates[~na_rows]
         y = y[~na_rows]
-        ids = ids[~na_rows]
+        cat = cat[~na_rows]
 
         # int type if classes represented integers
         if (y % 1).all() == 0:
@@ -826,55 +717,12 @@ class RasterStack(object):
             X = X[~np.isnan(X).any(axis=1)]
         
         if as_df is True:
-            df = pd.DataFrame(data=np.column_stack((ids, coordinates, y, X)),
-                              columns = ['id', 'x', 'y'] + fields + self.names)
+            df = pd.DataFrame(data=np.column_stack((coordinates, y, X)),
+                              columns=['x', 'y'] + fields + self.names,
+                              index=cat)
             return df
 
-        return(X, y, coordinates)
-
-    def append(self, other):
-        """
-        Setter method to add new Raster objects
-
-        Args
-        ----
-        other : RasterStack object or list of names of GRASS GIS raster maps
-        """
-
-        if isinstance(other, RasterStack):
-            self.layers = self.layers + other.layers
-
-        elif isinstance(other, list):
-            for raster in other:
-                self.layers = self.layers + raster.layers
-
-    def drop(self, labels):
-        """
-        Drop individual layers from a RasterStack object
-
-        Args
-        ----
-        labels : single label or list-like
-            Index (int) or layer name to drop. Can be a single integer or label,
-            or a list of integers or labels
-        """
-
-        # convert single label to list
-        if isinstance(labels, (str, int)):
-            labels = [labels]
-
-        if len([i for i in labels if isinstance(i, int)]) == len(labels):
-            # numerical index based subsetting
-            self.layers = [v for (i, v) in enumerate(self.layers) if i not in labels]
-            self.names = [v for (i, v) in enumerate(self.names) if i not in labels]
-
-        elif len([i for i in labels if isinstance(i, str)]) == len(labels):
-            # str label based subsetting
-            self.layers = [v for (i, v) in enumerate(self.layers) if self.names[i] not in labels]
-            self.names = [v for (i, v) in enumerate(self.names) if self.names[i] not in labels]
-
-        else:
-            raise ValueError('Cannot drop layers based on mixture of indexes and labels')
+        return(X, y)
 
     def to_pandas(self, res=None, resampling='nearest'):
         """

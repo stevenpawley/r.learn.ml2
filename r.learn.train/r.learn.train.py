@@ -496,7 +496,10 @@ def main():
     maplist = gs.read_command("i.group", group=group, flags="g").split(os.linesep)[:-1]
     
     # create RasterStack
-    stack = RasterStack(rasters=maplist, categorical_names=category_maps)
+    stack = RasterStack(rasters=maplist)
+    
+    if category_maps is not None:
+        stack.categorical = category_maps
 
     # -------------------------------------------------------------------------
     # Extract training data
