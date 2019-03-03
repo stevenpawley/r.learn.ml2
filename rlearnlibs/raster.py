@@ -679,7 +679,7 @@ class RasterStack(object):
                     raster=src.fullname(),
                     flags='p', stdout_=PIPE).outputs.stdout
                 rast_data = rast_data.split(os.linesep)[:-1]
-                X[:, i] = np.asarray([k.split('|')[1] for k in rast_data])
+                X[:, i] = np.asarray([k.split('|')[1] if k.split('|')[1] != '*' else np.nan for k in rast_data])
             
             cat = np.asarray([k.split('|')[0] for k in rast_data])
             
@@ -714,8 +714,9 @@ class RasterStack(object):
 
             y = y[~np.isnan(X).any(axis=1)]
             coordinates = coordinates[~np.isnan(X).any(axis=1)]
+            cat = cat[~np.isnan(X).any(axis=1)]
             X = X[~np.isnan(X).any(axis=1)]
-        
+            
         if as_df is True:
             df = pd.DataFrame(data=np.column_stack((coordinates, y, X)),
                               columns=['x', 'y'] + fields + self.names,
