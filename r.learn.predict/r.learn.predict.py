@@ -83,6 +83,16 @@ sys.path.append(path)
 
 from raster import RasterStack
 
+################## test ##########################################
+from grass.pygrass.gis.region import Region
+from grass.pygrass.modules.grid.split import split_region_tiles
+from grass.pygrass.modules.grid.patch import rpatch_map
+import multiprocessing as mltp
+from itertools import chain
+import random
+import string
+from grass.pygrass.modules.shortcuts import general as g
+
 
 def main():
     try:
@@ -124,7 +134,8 @@ def main():
     # -------------------------------------------------------------------------
 
     # fetch individual raster names from group
-    maplist = gs.read_command("i.group", group=group, flags="g").split(os.linesep)[:-1]
+    maplist = gs.read_command(
+        'i.group', group=group, flags='g', quiet=True).split(os.linesep)[:-1]
     
     # create RasterStack
     stack = RasterStack(rasters=maplist)
@@ -142,7 +153,7 @@ def main():
     if prob_only is False:
     
         gs.message('Predicting classification/regression raster...')
-    
+
         stack.predict(estimator=estimator, output=output, height=row_incr,
                       overwrite=gs.overwrite())
 
@@ -150,9 +161,11 @@ def main():
     
         gs.message('Predicting class probabilities...')
     
-        stack.predict_proba(estimator=estimator, output=output,
-                            class_labels=np.unique(y), overwrite=gs.overwrite(),
-                            height=row_incr)
+        stack.predict_proba(
+            estimator=estimator, output=output,
+            class_labels=np.unique(y),
+            overwrite=gs.overwrite(),
+            height=row_incr)
 
 
 if __name__ == "__main__":

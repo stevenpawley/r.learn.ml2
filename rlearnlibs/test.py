@@ -1,4 +1,3 @@
-
 from grass.script.utils import get_lib_path
 from grass.pygrass.raster import RasterRow
 from copy import deepcopy
@@ -17,17 +16,28 @@ reg = Region()
 stack = RasterStack(rasters=["lsat5_1987_10", "lsat5_1987_20", "lsat5_1987_30", "lsat5_1987_40",
                              "lsat5_1987_50", "lsat5_1987_70"])
 
+name, src = stack.layers.items()[0]
+src.fullname()
 
-X, y, crd = stack.extract_points(vect_name='landclass96_roi', fields=['value', 'cat'])
-df = stack.extract_points(vect_name='landclass96_roi', fields='value', as_df=True)
+for i in stack.layers.items():
+    print(i)
+
+X, y, crd = stack.extract_points(
+        vect_name='landclass96_roi',
+        fields=['value'])
+
+df = stack.extract_points(
+        vect_name='landclass96_roi', fields='value', 
+        as_df=True)
+
 df = stack.extract_pixels(response='landclass96_roi', as_df=True)
+
 X, y, crd = stack.extract_pixels(response='landclass96_roi')
 
 stack.head()
 stack.tail()
 
 df = stack.to_pandas()
-df = stack.to_pandas(res=500)
 df = df.melt(id_vars=['x', 'y'])
 
 from plotnine import *

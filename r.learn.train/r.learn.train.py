@@ -219,14 +219,6 @@
 #% guisection: Cross validation
 #%end
 
-#%option
-#% key: n_permutations
-#% type: integer
-#% description: Number of permutations to perform for feature importances
-#% answer: 10
-#% guisection: Cross validation
-#%end
-
 #%flag
 #% key: t
 #% description: Perform hyperparameter tuning only
@@ -335,9 +327,9 @@ if path is None:
     gs.fatal('Not able to find the r.learn library directory')
 sys.path.append(path)
 
-from model_selection import cross_val_scores
-from utils import (model_classifiers, load_training_data, save_training_data,
-                   option_to_list, scoring_metrics)
+from utils import (
+    model_classifiers, load_training_data, save_training_data, option_to_list,
+    scoring_metrics)
 from raster import RasterStack
 
 
@@ -404,7 +396,6 @@ def main():
     group_raster = options['group_raster']
     tune_only = flags['t']
     importances = flags['f']
-    n_permutations = int(options['n_permutations'])
     errors_file = options['errors_file']
     preds_file = options['preds_file']
     fimp_file = options['fimp_file']
@@ -436,10 +427,12 @@ def main():
         if ',' in val:
             
             # add all vals to param_grid
-            param_grid[key] = [hyperparams_type[key](i) for i in val.split(',')]
+            param_grid[key] = [hyperparams_type[key](i)
+                for i in val.split(',')]
             
             # use first param for default
-            hyperparams[key] = [hyperparams_type[key](i) for i in val.split(',')][0]
+            hyperparams[key] = [hyperparams_type[key](i)
+                for i in val.split(',')][0]
         
         # else convert the single strings to int or float
         else:
@@ -475,7 +468,8 @@ def main():
         gs.fatal('No attribute column specified for training points')
 
     # check that cv > 1 if hyperparameter tuning is selected
-    if any(param_grid) is True and cv == 1 and grid_search == 'cross-validation':
+    if (any(param_grid) is True and cv == 1 and
+        grid_search == 'cross-validation'):
         gs.fatal(
             'Hyperparameter search using cross validation requires cv > 1')
 
@@ -493,7 +487,8 @@ def main():
     # -------------------------------------------------------------------------
 
     # fetch individual raster names from group
-    maplist = gs.read_command("i.group", group=group, flags="g").split(os.linesep)[:-1]
+    maplist = (gs.read_command("i.group", group=group, flags="g").
+               split(os.linesep)[:-1])
     
     # create RasterStack
     stack = RasterStack(rasters=maplist)
@@ -551,9 +546,9 @@ def main():
             save_training_data(
                 X, y, group_id, sample_coords, save_training)
 
-    # ---------------------------------------------------------------------
+    # -------------------------------------------------------------------------
     # Define the inner search resampling method
-    # ---------------------------------------------------------------------
+    # -------------------------------------------------------------------------
 
     from sklearn.model_selection import (
         GridSearchCV, StratifiedKFold, GroupKFold, KFold, ShuffleSplit,
@@ -584,9 +579,9 @@ def main():
     else:
         inner = None
 
-    # ---------------------------------------------------------------------
+    # -------------------------------------------------------------------------
     # Define the outer search resampling method
-    # ---------------------------------------------------------------------
+    # -------------------------------------------------------------------------
     if cv > 1:
         
         if group_id is None and mode == 'classification':
@@ -598,9 +593,9 @@ def main():
         else:
             outer = GroupKFold(n_splits=cv)
 
-    # ---------------------------------------------------------------------
+    # -------------------------------------------------------------------------
     # Define sample weights for estimators that require weights in fit method
-    # ---------------------------------------------------------------------
+    # -------------------------------------------------------------------------
 
     # estimators that take sample_weights
     if balance is True and mode == 'classification' and model_name in (
@@ -613,9 +608,9 @@ def main():
     else:
         class_weights = None
 
-    # ---------------------------------------------------------------------
+    # -------------------------------------------------------------------------
     # Define the preprocessing pipeline
-    # ---------------------------------------------------------------------
+    # -------------------------------------------------------------------------
     
     from sklearn.pipeline import Pipeline
     from sklearn.compose import ColumnTransformer
@@ -629,7 +624,8 @@ def main():
             remainder='passthrough',
             transformers=[
                 ('scaling', scaler,
-                 np.setxor1d(range(stack.count), stack.categorical).astype('int'))])
+                 np.setxor1d(range(stack.count),
+                             stack.categorical).astype('int'))])
         
     # onehot encoding
     if category_maps is not None:
@@ -643,9 +639,9 @@ def main():
         estimator = Pipeline([('preprocessing', trans),
                               ('estimator', estimator)])
 
-    # ---------------------------------------------------------------------
+    # -------------------------------------------------------------------------
     # Create the hyperparameter grid search method
-    # ---------------------------------------------------------------------
+    # -------------------------------------------------------------------------
 
     # check if dict contains and keys - perform GridSearchCV
     if any(param_grid) is True:
@@ -661,15 +657,16 @@ def main():
             estimator=estimator, param_grid=param_grid,
             scoring=search_scorer, n_jobs=n_jobs, cv=inner)
 
-    # ---------------------------------------------------------------------
+    # -------------------------------------------------------------------------
     # Estimator training
-    # ---------------------------------------------------------------------
+    # -------------------------------------------------------------------------
 
     gs.message(os.linesep)
     gs.message(('Fitting model using ' + model_name))
 
     # fitting ensuring that all options are passed
-    if model_name in ('GradientBoostingClassifier', 'GausianNB') and balance is True:
+    if (model_name in ('GradientBoostingClassifier', 'GausianNB')
+        and balance is True):
         if isinstance(estimator, Pipeline):
             fit_params = {'estimator__sample_weight': class_weights}
         else:
@@ -695,93 +692,72 @@ def main():
     # Cross-validation
     # ---------------------------------------------------------------------
     
-#        from sklearn.model_selection import cross_validate
-#        scores = cross_validate(estimator, X, y, group_id, scoring, outer, n_jobs, fit_params=fit_params)
-#        gs.message(scores)
-#        test_scoring = ['test_' + i for i in scoring]
-#        gs.message(os.linesep)
-#        gs.message(('Metric \t Mean \t Error'))
-#        for sc in test_scoring:
-#            gs.message(sc + '\t' + str(scores[sc].mean()) + '\t' + str(scores[sc].std()))
-    
     if cv > 1 and tune_only is not True:
+        from model_selection import cross_val
+        from sklearn.metrics import classification_report
+        from sklearn import metrics
         
-        if mode == 'classification' and cv > np.histogram(y, bins=np.unique(y))[0].min():
+        if (mode == 'classification' and 
+            cv > np.histogram(y, bins=np.unique(y))[0].min()):
             gs.message(os.linesep)
-            gs.fatal('Number of cv folds is greater than number of ' +
-                       'samples in some classes')
+            gs.fatal('Number of cv folds is greater than number of '
+                     'samples in some classes')
             
         gs.message(os.linesep)
-        gs.message(
-            "Cross validation global performance measures......:")
+        gs.message("Cross validation global performance measures......:")
 
-        # add auc and mcc as scorer if classification is binary
-        if mode == 'classification' and \
-            len(np.unique(y)) == 2 and all([0, 1] == np.unique(y)):
-            scoring.append('roc_auc')
-            scoring.append('matthews_corrcoef')
+        if (mode == 'classification' and len(np.unique(y)) == 2 and
+            all([0, 1] == np.unique(y))):    
+            scoring['roc_auc'] = metrics.roc_auc_score    
+        
+        y_pred = cross_val_predict(
+            estimator=estimator, X=X, y=y, cv=outer, n_jobs=n_jobs, 
+            fit_params=fit_params)
+        
+        gs.message(os.linesep)
+        gs.message('Global cross validation scores...')
+        gs.message(os.linesep)
+        gs.message(('Metric \t Mean \t Error'))    
+        for name, func in scoring.items():
+            gs.message(name + 
+                       '\t' + str(func(y, y_pred).mean().round(3)) + 
+                       '\t' + str(func(y, y_pred).std().round(3)))
 
-        # perform the cross-validatation
-        scores, cscores, fimp, models, preds = cross_val_scores(
-            estimator, X, y, group_id, class_weights, outer, scoring,
-            importances, n_permutations, random_state, n_jobs)
-
-        preds = np.hstack((preds, sample_coords))
-
-        for method, val in scores.items():
-            gs.message(
-                method+":\t%0.3f\t+/-SD\t%0.3f" %
-                (val.mean(), val.std()))
-
-        # individual class scores
-        if mode == 'classification' and len(np.unique(y)) != 2:
-            
+        if mode == 'classification':    
             gs.message(os.linesep)
+            gs.message('Cross validation class performance measures......:')
             gs.message(
-                'Cross validation class performance measures......:')
-            gs.message('Class \t' + '\t'.join(map(str, np.unique(y))))
+                classification_report(y_true=y, y_pred=y_pred, sample_weight=class_weights))
 
-            for method, val in cscores.items():
-                mat_cscores = np.matrix(val)
-                gs.message(
-                    method+':\t' + '\t'.join(
-                        map(str, np.round(
-                                mat_cscores.mean(axis=0), 2)[0])))
-                gs.message(
-                    method+' std:\t' + '\t'.join(
-                        map(str, np.round(
-                                mat_cscores.std(axis=0), 2)[0])))
-
-        # write cross-validation results for csv file
-        if errors_file != '':
-            errors = pd.DataFrame(scores)
-            errors.to_csv(errors_file, mode='w')
-
-        # write cross-validation predictions to csv file
-        if preds_file != '':
-            preds = pd.DataFrame(preds)
-            preds.columns = ['y_true', 'y_pred', 'fold', 'x', 'y']
-            preds.to_csv(preds_file, mode='w')
-            text_file = open(preds_file + 't', "w")
-            text_file.write(
-                '"Integer","Real","Real","integer","Real","Real"')
-            text_file.close()
-
-        # feature importances
-        if importances is True:
-            gs.message(os.linesep)
-            gs.message("Feature importances")
-            gs.message("id" + "\t" + "Raster" + "\t" + "Importance")
-
-            # mean of cross-validation feature importances
-            for i in range(len(fimp.mean(axis=0))):
-                gs.message(
-                    str(i) + "\t" + maplist[i] +
-                    "\t" + str(round(fimp.mean(axis=0)[i], 4)))
-
-            if fimp_file != '':
-                np.savetxt(fname=fimp_file, X=fimp, delimiter=',',
-                           header=','.join(maplist), comments='')
+#        # write cross-validation results for csv file
+#        if errors_file != '':
+#            errors = pd.DataFrame(scores)
+#            errors.to_csv(errors_file, mode='w')
+#
+#        # write cross-validation predictions to csv file
+#        if preds_file != '':
+#            preds = pd.DataFrame(preds)
+#            preds.columns = ['y_true', 'y_pred', 'fold', 'x', 'y']
+#            preds.to_csv(preds_file, mode='w')
+#            text_file = open(preds_file + 't', "w")
+#            text_file.write('"Integer","Real","Real","integer","Real","Real"')
+#            text_file.close()
+#
+#        # feature importances
+#        if importances is True:
+#            gs.message(os.linesep)
+#            gs.message("Feature importances")
+#            gs.message("id" + "\t" + "Raster" + "\t" + "Importance")
+#
+#            # mean of cross-validation feature importances
+#            for i in range(len(fimp.mean(axis=0))):
+#                gs.message(
+#                    str(i) + "\t" + maplist[i] +
+#                    "\t" + str(round(fimp.mean(axis=0)[i], 4)))
+#
+#            if fimp_file != '':
+#                np.savetxt(fname=fimp_file, X=fimp, delimiter=',',
+#                           header=','.join(maplist), comments='')
 
     # Save the fitted model
     from sklearn.externals import joblib

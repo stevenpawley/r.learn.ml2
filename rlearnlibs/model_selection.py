@@ -11,6 +11,44 @@ from copy import deepcopy
 import grass.script as gs
 
 
+def cross_val(estimator, X, y, cv, **fit_params):
+    """
+    Cross validation function
+    
+    Parameters
+    ----------
+    estimator : scikit-learn estimator
+    X : ndarray
+        2d array of training data
+    y : ndarray
+        1d array of response data
+    cv : model_selection function
+    
+    Returns
+    -------
+    preds : dict
+    """
+    estimator = deepcopy(estimator)
+    preds = {
+        'y_pred': np.zeros((0, )),
+        'y_true': np.zeros((0, )),
+        'idx': np.zeros((0, )),
+        'fold': np.zeros((0, ))
+        }
+    
+    for fold, (train_idx, test_idx) in enumerate(cv.split(X)):
+        X_train, X_test = X[train_idx], X[test_idx]
+        y_train, y_test = y[train_idx], y[test_idx]
+        
+        estimator.fit(X_train, y_train, **fit_params)
+        preds['y_pred'] = np.concatenate((preds['y_pred'], estimator.predict(X_test)))
+        preds['y_true'] = np.concatenate((preds['y_true'], y_test))
+        preds['idx'] = np.concatenate((preds['idx'], test_idx))
+        preds['fold'] = np.concatenate((preds['fold'], np.repeat(fold, y_test.shape[0])))
+    
+    return preds
+
+
 def specificity_score(y_true, y_pred):
     """
     Calculate specificity score
@@ -237,28 +275,8 @@ def cross_val_scores(estimator, X, y, groups=None, sample_weight=None, cv=3,
         scoring = [scoring]
     scores = dict.fromkeys(scoring)
     scores = {key: [] for key, value in scores.items()}
-    scoring_methods = {'accuracy': metrics.accuracy_score,
-                       'balanced_accuracy': metrics.recall_score,
-                       'average_precision': metrics.average_precision_score,
-                       'brier_loss': metrics.brier_score_loss,
-                       'kappa': metrics.cohen_kappa_score,
-                       'f1': metrics.f1_score,
-                       'fbeta': metrics.fbeta_score,
-                       'hamming_loss': metrics.hamming_loss,
-                       'jaccard_similarity': metrics.jaccard_similarity_score,
-                       'log_loss': metrics.log_loss,
-                       'matthews_corrcoef': metrics.matthews_corrcoef,
-                       'precision': metrics.precision_score,
-                       'recall': metrics.recall_score,
-                       'specificity': specificity_score,
-                       'roc_auc': metrics.roc_auc_score,
-                       'zero_one_loss': metrics.zero_one_loss,
-                       'r2': metrics.r2_score,
-                       'explained_variance': metrics.explained_variance_score,
-                       'neg_mean_absolute_error': metrics.mean_absolute_error,
-                       'neg_mean_squared_error': metrics.mean_squared_error,
-                       'neg_mean_squared_log_error': metrics.mean_squared_log_error,
-                       'neg_median_absolute_error': metrics.median_absolute_error}
+    scoring_methods = metrics.SCORERS
+    scoring_methods['kappa'] = metrics.cohen_kappa_score
 
     byclass_methods = {'f1': metrics.f1_score,
                        'fbeta': metrics.fbeta_score,
@@ -366,8 +384,8 @@ def cross_val_scores(estimator, X, y, groups=None, sample_weight=None, cv=3,
             # metrics that have averaging for multiclass
             else:
                 scores[m] = np.append(
-                    scores[m], scoring_methods[m](
-                        y_test, y_pred, average=average))
+                        scores[m], 
+                        scoring_methods[m](y_test, y_pred, average=average))
 
         # calculate per-class performance metrics
         for key in byclass_scores.keys():

@@ -229,14 +229,25 @@ def scoring_metrics(mode):
     from sklearn.metrics import make_scorer
     
     if mode == 'classification':
-        scoring = ['accuracy', 'precision', 'recall', 'f1', 'kappa',
-                   'balanced_accuracy']
+        scoring = {
+            'accuracy': metrics.accuracy_score,
+            'balanced_accuracy': metrics.balanced_accuracy_score,
+            'matthews_correlation_coefficient': metrics.matthews_corrcoef,
+            'kappa': metrics.cohen_kappa_score
+            }
+
         search_scorer = make_scorer(metrics.matthews_corrcoef)
+    
     else:
-        scoring = ['r2', 'explained_variance', 'neg_mean_absolute_error',
-                   'neg_mean_squared_error', 'neg_mean_squared_log_error',
-                   'neg_median_absolute_error']
-        search_scorer = 'r2'
+        scoring = {
+            'r2' : metrics.r2_score,
+            'explained_variance': metrics.explained_variance_score,
+            'mean_absolute_error': metrics.mean_absolute_error,
+            'mean_squared_error': metrics.mean_squared_error
+            }
+        
+        search_scorer = make_scorer(
+                metrics.mean_squared_error, greater_is_better=False)
     
     return(scoring, search_scorer)
 
