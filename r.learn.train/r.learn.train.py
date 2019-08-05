@@ -227,15 +227,8 @@
 
 #%flag
 #% key: f
-#% label: Estimate permutation-based feature importances
-#% description: Estimate feature importance using a permutation-based method
-#% guisection: Cross validation
-#%end
-
-#%option G_OPT_F_OUTPUT
-#% key: errors_file
-#% label: Save cross-validation global accuracy results to csv
-#% required: no
+#% label: Feature importances
+#% description: Display feature importances if supported by selected estimator model
 #% guisection: Cross validation
 #%end
 
@@ -272,7 +265,7 @@
 #% key: n_jobs
 #% type: integer
 #% description: Number of cores for multiprocessing, -2 is n_cores-1
-#% answer: -2
+#% answer: 1
 #% guisection: Optional
 #%end
 
@@ -396,7 +389,6 @@ def main():
     group_raster = options['group_raster']
     tune_only = flags['t']
     importances = flags['f']
-    errors_file = options['errors_file']
     preds_file = options['preds_file']
     fimp_file = options['fimp_file']
     param_file = options['param_file']
@@ -509,7 +501,7 @@ def main():
         # append spatial clumps or group raster to the predictors
         if group_raster != '':
             stack.append(group_raster)
-
+            
         # extract training data
         if training_map != '':
             X, y, sample_coords = stack.extract_pixels(training_map)
@@ -674,16 +666,17 @@ def main():
     else:
         fit_params = {}
 
-    if isinstance(inner, (GroupKFold, GroupShuffleSplit)):
+    try:
         estimator.fit(X, y, groups=group_id, **fit_params)
-    else:
+    except:
         estimator.fit(X, y, **fit_params)
-
+    
     # message best hyperparameter setup and optionally save using pandas
     if any(param_grid) is True:
         gs.message(os.linesep)
         gs.message('Best parameters:')
         gs.message(str(estimator.best_params_))
+        
         if param_file != '':
             param_df = pd.DataFrame(estimator.cv_results_)
             param_df.to_csv(param_file)
@@ -710,57 +703,79 @@ def main():
             all([0, 1] == np.unique(y))):    
             scoring['roc_auc'] = metrics.roc_auc_score    
         
-        y_pred = cross_val_predict(
-            estimator=estimator, X=X, y=y, cv=outer, n_jobs=n_jobs, 
-            fit_params=fit_params)
+        preds = cross_val(estimator=estimator, X=X, y=y, cv=outer, 
+                          fit_params=fit_params)
+        
+        preds = pd.DataFrame(data=preds, 
+                             columns=['y_pred', 'y_true', 'idx', 'fold'])
+        preds['x_coord'] = sample_coords[:, 0]
+        preds['y_coord'] = sample_coords[:, 1]
         
         gs.message(os.linesep)
         gs.message('Global cross validation scores...')
         gs.message(os.linesep)
         gs.message(('Metric \t Mean \t Error'))    
+
         for name, func in scoring.items():
+            score_mean = (
+                preds.groupby('fold').
+                apply(lambda x: func(x['y_true'], x['y_pred'])).
+                mean())
+
+            score_std = (
+                preds.groupby('fold').
+                apply(lambda x: func(x['y_true'], x['y_pred'])).
+                std())
+            
             gs.message(name + 
-                       '\t' + str(func(y, y_pred).mean().round(3)) + 
-                       '\t' + str(func(y, y_pred).std().round(3)))
+                       '\t' + str(score_mean.round(3)) + 
+                       '\t' + str(score_std.round(3)))
 
         if mode == 'classification':    
             gs.message(os.linesep)
             gs.message('Cross validation class performance measures......:')
             gs.message(
-                classification_report(y_true=y, y_pred=y_pred, sample_weight=class_weights))
+                classification_report(
+                    y_true=preds['y_true'], 
+                    y_pred=preds['y_pred'], 
+                    sample_weight=class_weights))
 
-#        # write cross-validation results for csv file
-#        if errors_file != '':
-#            errors = pd.DataFrame(scores)
-#            errors.to_csv(errors_file, mode='w')
-#
-#        # write cross-validation predictions to csv file
-#        if preds_file != '':
-#            preds = pd.DataFrame(preds)
-#            preds.columns = ['y_true', 'y_pred', 'fold', 'x', 'y']
-#            preds.to_csv(preds_file, mode='w')
-#            text_file = open(preds_file + 't', "w")
-#            text_file.write('"Integer","Real","Real","integer","Real","Real"')
-#            text_file.close()
-#
-#        # feature importances
-#        if importances is True:
-#            gs.message(os.linesep)
-#            gs.message("Feature importances")
-#            gs.message("id" + "\t" + "Raster" + "\t" + "Importance")
-#
-#            # mean of cross-validation feature importances
-#            for i in range(len(fimp.mean(axis=0))):
-#                gs.message(
-#                    str(i) + "\t" + maplist[i] +
-#                    "\t" + str(round(fimp.mean(axis=0)[i], 4)))
-#
-#            if fimp_file != '':
-#                np.savetxt(fname=fimp_file, X=fimp, delimiter=',',
-#                           header=','.join(maplist), comments='')
+        # write cross-validation predictions to csv file
+        if preds_file != '':
+            preds.to_csv(preds_file, mode='w', index=False)
+            text_file = open(preds_file + 't', "w")
+            text_file.write('"Real", "Real", "integer", "integer", "Real", "Real"')
+            text_file.close()
+
+        # feature importances
+        if importances is True:
+            try:
+                fimp = estimator.feature_importances_
+            except AttributeError:
+                pass
+            try:
+                fimp = estimator.best_estimator_.feature_importances_
+            except AttributeError:
+                pass
+            
+            try:
+                fimp = pd.DataFrame({'Feature': maplist, 'Importances': fimp})
+                
+                gs.message(os.linesep)
+                gs.message('Feature importances')
+                gs.message('Feature' + '\t' + 'Score')
+                
+                for index, row in fimp.iterrows():    
+                    gs.message(row['Feature'] + '\t' + str(row['Importances']))
+
+                if fimp_file != '':
+                    fimp.to_csv(fimp_file, index=False)
+            except:
+                gs.warning('Feature importances not available for the '
+                           'selected estimator model')
 
     # Save the fitted model
-    from sklearn.externals import joblib
+    import joblib
     joblib.dump((X, y, sample_coords, group_id, estimator), model_save)
 
 

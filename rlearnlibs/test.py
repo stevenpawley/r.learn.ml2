@@ -16,15 +16,9 @@ reg = Region()
 stack = RasterStack(rasters=["lsat5_1987_10", "lsat5_1987_20", "lsat5_1987_30", "lsat5_1987_40",
                              "lsat5_1987_50", "lsat5_1987_70"])
 
-name, src = stack.layers.items()[0]
-src.fullname()
-
-for i in stack.layers.items():
-    print(i)
-
 X, y, crd = stack.extract_points(
         vect_name='landclass96_roi',
-        fields=['value'])
+        fields='value')
 
 df = stack.extract_points(
         vect_name='landclass96_roi', fields='value', 
@@ -50,11 +44,13 @@ from plotnine import *
  theme(axis_title = element_blank()))
 
 from sklearn.ensemble import RandomForestClassifier
-clf = RandomForestClassifier(n_estimators=100)
+from sklearn.model_selection import GridSearchCV
+clf = RandomForestClassifier(n_estimators=100, n_jobs=-1)
+clf = GridSearchCV(clf, param_grid={'min_samples_leaf': [1, 2, 5]})
 clf.fit(X, y)
 
-stack.predict(clf, output='test', overwrite=True, height=25)
-stack.predict_proba(clf, output='test', overwrite=True, height=25)
+stack.predict(clf, output='test_script', overwrite=True, height=25)
+stack.predict_proba(clf, output='test_script', overwrite=True, height=25)
 
 from sklearn.model_selection import cross_validate
 cross_validate(clf, X, y, cv=3)

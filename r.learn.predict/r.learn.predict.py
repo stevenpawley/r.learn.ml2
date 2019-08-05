@@ -44,7 +44,7 @@
 #% label: Output Map
 #% description: Raster layer name to store result from classification or regression model. The name will also used as a perfix if class probabilities or intermediate of cross-validation results are ordered as maps.
 #% guisection: Required
-#% required: no
+#% required: yes
 #%end
 
 #%flag
@@ -83,21 +83,11 @@ sys.path.append(path)
 
 from raster import RasterStack
 
-################## test ##########################################
-from grass.pygrass.gis.region import Region
-from grass.pygrass.modules.grid.split import split_region_tiles
-from grass.pygrass.modules.grid.patch import rpatch_map
-import multiprocessing as mltp
-from itertools import chain
-import random
-import string
-from grass.pygrass.modules.shortcuts import general as g
-
 
 def main():
     try:
         import sklearn
-        from sklearn.externals import joblib
+        import joblib
 
         if sklearn.__version__ < '0.20':
             gs.fatal("Scikit learn 0.20 or newer is required")

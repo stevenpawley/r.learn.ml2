@@ -11,7 +11,7 @@ from copy import deepcopy
 import grass.script as gs
 
 
-def cross_val(estimator, X, y, cv, **fit_params):
+def cross_val(estimator, X, y, cv, fit_params):
     """
     Cross validation function
     
@@ -36,7 +36,7 @@ def cross_val(estimator, X, y, cv, **fit_params):
         'fold': np.zeros((0, ))
         }
     
-    for fold, (train_idx, test_idx) in enumerate(cv.split(X)):
+    for fold, (train_idx, test_idx) in enumerate(cv.split(X, y)):
         X_train, X_test = X[train_idx], X[test_idx]
         y_train, y_test = y[train_idx], y[test_idx]
         

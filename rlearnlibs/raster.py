@@ -159,7 +159,7 @@ class RasterStack(object):
         # some checks
         if isinstance(mapnames, str):
             mapnames = [mapnames]
-                
+        
         # reset existing attributes
         for name in self.layers.keys():
             delattr(self, name)
@@ -252,7 +252,7 @@ class RasterStack(object):
             
         else:
             new_raster = RasterStack(
-                rasters=[i.encode() for i in self.names] + other)
+                rasters=[i for i in self.names] + other)
             return new_raster
 
     def drop(self, labels, in_place=True):
@@ -285,9 +285,9 @@ class RasterStack(object):
                         if mapname not in labels]
 
         if in_place is True:
-            self.layers = [i.encode() for i in subset_names]
+            self.layers = [i for i in subset_names]
         else:
-            new_raster = RasterStack(rasters=[i.encode() for i in subset_names])
+            new_raster = RasterStack(rasters=[i for i in subset_names])
             
             return new_raster
     
@@ -537,7 +537,8 @@ class RasterStack(object):
         func = self._pred_fun
 
         # determine dtype
-        img = self.read(window=self.row_windows(height=height).next())
+        test_window = list(self.row_windows(height=height))[0]
+        img = self.read(window=test_window)
         result = func(img, estimator)
         
         if result.dtype == 'float':
@@ -615,8 +616,9 @@ class RasterStack(object):
         func = self._prob_fun
 
         # use class labels if supplied else output preds as 0,1,2...n
-        if class_labels is None:            
-            img = self.read(window=self.row_windows(height=height).next())
+        if class_labels is None:
+            test_window = list(self.row_windows(height=height))[0]
+            img = self.read(window=test_window)
             result = func(img, estimator)            
             class_labels = range(result.shape[2])
         
@@ -767,10 +769,7 @@ class RasterStack(object):
         
         if isinstance(fields, str):
             fields = [fields]
-        
-        # collapse list of fields to comma separated string
-        field_names = ','.join(fields + ['cat'])
-        
+                
         # open grass vector
         with VectorTopo(vect_name.split('@')[0], mode='r') as points:
     
@@ -785,38 +784,40 @@ class RasterStack(object):
     
             # read table fields to dataframe
             table = points.table
-            sqlpath = (gs.read_command("db.databases", driver="sqlite").
+            key = table.key
+            sqlpath = (gs.read_command('db.databases', driver='sqlite').
                        strip(os.linesep))
             con = sqlite3.connect(sqlpath)
+            
             df = (pd.read_sql_query(
-                    "SELECT {fields} FROM {name} WHERE cat IN ({vals})".
-                    format(fields=field_names, 
+                    'SELECT {fields} FROM {name} WHERE {key} IN ({vals})'.
+                    format(fields=','.join(fields + [key]), 
                            name=table.name,
+                           key=key,
                            vals=','.join(map(str, current_reg_cat))), con))
             con.close()
     
             # extract raster data    
             for name, src in self.loc.items():
-                
                 rast_data = v.what_rast(
                     map=vect_name,
                     raster=src.fullname(),
                     flags='p', quiet=True, stdout_=PIPE).outputs.stdout
+                
                 rast_data = rast_data.split(os.linesep)[:-1]
                 
-                X = (np.asarray([k.split('|')[1] 
+                X = (np.asarray([float(k.split('|')[1])
                     if k.split('|')[1] != '*' else np.nan for k in rast_data]))
                 
-                cat = np.asarray([k.split('|')[0] for k in rast_data])
-                df[name] = X[df.cat.argsort(cat).values]
+                df[name] = X
             
             # get coordinate and id values
             coordinates = np.zeros((n_points, 2))
             for i, p in enumerate(points_in_reg):
                 coordinates[i, :] = np.asarray(p.coords())
             
-            df['x'] = coordinates[df['cat'].argsort(cat).values, 0]
-            df['y'] = coordinates[df['cat'].argsort(cat).values, 1]
+            df['x'] = coordinates[:, 0]
+            df['y'] = coordinates[:, 1]
         
         # set any grass integer nodata values to NaN
         df = df.replace(self._cell_nodata, np.nan)
@@ -824,10 +825,6 @@ class RasterStack(object):
         # remove rows with missing response data
         df = df.dropna(subset=fields)
         
-        # int type if classes represented integers
-#        if (y % 1).all() == 0:
-#            y = y.astype('int')
-
         # remove samples containing NaNs
         if na_rm is True:    
             gs.message('Removing samples with NaN values in the ' +
@@ -835,7 +832,10 @@ class RasterStack(object):
             df = df.dropna()
             
         if as_df is False:
-            X = df.loc[:, df.columns.isin(self.loc.keys())]
+            if len(fields) == 1:
+                fields = fields[0]
+            
+            X = df.loc[:, df.columns.isin(self.loc.keys())].values
             y = df.loc[:, fields].values
             coordinates = df.loc[:, ['x', 'y']].values            
             return X, y, coordinates
