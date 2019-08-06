@@ -5,10 +5,12 @@
 model validation and permutation feature importances."""
 
 from __future__ import absolute_import
-import numpy as np
+
 import os
 from copy import deepcopy
+
 import grass.script as gs
+import numpy as np
 
 
 def cross_val(estimator, X, y, cv, fit_params):

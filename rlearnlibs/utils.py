@@ -6,8 +6,9 @@ with passing pre-defined scikit learn classifiers
 and other utilities for loading/saving training data."""
 
 from __future__ import absolute_import
-import numpy as np
+
 import grass.script as gs
+import numpy as np
 
 
 def option_to_list(x, dtype=None):
@@ -65,7 +66,6 @@ def model_classifiers(estimator, random_state, n_jobs, p, weights=None):
     mode (string): Flag to indicate whether classifier performs classification
         or regression
     """
-    from sklearn.experimental import enable_hist_gradient_boosting     
     from sklearn.linear_model import LogisticRegression, LinearRegression
     from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
     from sklearn.discriminant_analysis import QuadraticDiscriminantAnalysis
@@ -75,8 +75,7 @@ def model_classifiers(estimator, random_state, n_jobs, p, weights=None):
         RandomForestClassifier, RandomForestRegressor, ExtraTreesClassifier,
         ExtraTreesRegressor)
     from sklearn.ensemble import (
-            GradientBoostingClassifier, GradientBoostingRegressor,
-            HistGradientBoostingClassifier, HistGradientBoostingRegressor)
+            GradientBoostingClassifier, GradientBoostingRegressor)
     from sklearn.svm import SVC, SVR
     from sklearn.neighbors import KNeighborsClassifier, KNeighborsRegressor
 
