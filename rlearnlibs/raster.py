@@ -737,9 +737,11 @@ class RasterStack(object):
         data = [i.split('|') for i in data]
         data = np.asarray(data).astype('float32')
 
-        coordinates = data[:, 0:2]
-        y = data[:, 2]
-        X = data[:, 3:]
+        # remove x,y columns from array indexes 1 and 2
+        data = data[:, 2:]
+        
+        y = data[:, 0]
+        X = data[:, 1:]
         
         if (y % 1).all() == 0:
             y = y.astype('int')
@@ -747,11 +749,11 @@ class RasterStack(object):
         if as_df is True:
             data = pd.DataFrame(
                 data=data, 
-                columns=['x', 'y', response] + self.names)
+                columns=[response] + self.names)
             
             return data
                     
-        return X, y, coordinates
+        return X, y
 
     def extract_points(self, vect_name, fields, na_rm=True, as_df=False):
         """Samples a list of GDAL rasters using a point data set.
@@ -783,8 +785,6 @@ class RasterStack(object):
                 
         df : pandas.DataFrame
             Extracted raster values as Pandas DataFrame if as_df = True.
-            The coordinates of the sampled data are also returned as x, y
-            columns and the index of the dataframe uses the GRASS cat field.
         """
                 
         if isinstance(fields, str):
@@ -792,7 +792,8 @@ class RasterStack(object):
                 
         # open grass vector
         with VectorTopo(vect_name.split('@')[0], mode='r') as points:
-    
+                
+            # read table for all points (irrespective of comp region)
             df = pd.DataFrame(points.table_to_dict()).transpose()
             df_cols = points.table.columns
             df_cols = [name for (name, dtype) in df_cols.items()]
@@ -801,6 +802,8 @@ class RasterStack(object):
     
             # extract raster data    
             for name, src in self.loc.items():
+                
+                # query raster data in comp region
                 rast_data = v.what_rast(
                     map=vect_name,
                     raster=src.fullname(),
@@ -811,9 +814,8 @@ class RasterStack(object):
                 X = (np.asarray([k.split('|')[1]
                     if k.split('|')[1] != '*' else np.nan for k in rast_data]))
 
-                cat = (np.asarray([k.split('|')[0]
-                    if k.split('|')[1] != '*' else self._cell_nodata for k in rast_data]))
-                cat = [int(i) for i in cat]
+                cat = (np.asarray([int(k.split('|')[0])
+                    if k.split('|')[1] != '*' else 0 for k in rast_data]))
             
                 src.open('r')
                 if src.mtype == 'CELL':
@@ -825,15 +827,7 @@ class RasterStack(object):
                 X = pd.DataFrame(data=np.column_stack((X, cat)), 
                                  columns=[name, points.table.key])
                 df = df.merge(X, on=points.table.key)
-                            
-            # get coordinate and id values
-            coordinates = np.zeros((points.num_primitives()['point'], 2))
-            for i, p in enumerate(points):
-                coordinates[i, :] = np.asarray(p.coords())
-            
-            df['x'] = coordinates[:, 0]
-            df['y'] = coordinates[:, 1]
-        
+                                    
         # set any grass integer nodata values to NaN
         df = df.replace(self._cell_nodata, np.nan)
 
@@ -852,8 +846,7 @@ class RasterStack(object):
             
             X = df.loc[:, df.columns.isin(self.loc.keys())].values
             y = df.loc[:, fields].values
-            coordinates = df.loc[:, ['x', 'y']].values            
-            return X, y, coordinates
+            return X, y
 
         return df
 

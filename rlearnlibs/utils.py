@@ -280,7 +280,7 @@ def scoring_metrics(mode):
 
 
 
-def save_training_data(X, y, groups, coords, file):
+def save_training_data(X, y, groups, file):
     """
     Saves any extracted training data to a csv file
 
@@ -298,7 +298,7 @@ def save_training_data(X, y, groups, coords, file):
         groups = np.empty((y.shape[0]))
         groups[:] = np.nan
 
-    training_data = np.column_stack([coords, X, y, groups])
+    training_data = np.column_stack([X, y, groups])
     np.savetxt(file, training_data, delimiter=',')
 
 
@@ -330,21 +330,20 @@ def load_training_data(file):
         groups = None
 
     # fetch X and y
-    coords = training_data[:, 0:2]
-    X = training_data[:, 2:last_Xcol]
+    X = training_data[:, 0:last_Xcol]
     y = training_data[:, -2]
 
-    return(X, y, groups, coords)
+    return(X, y, groups)
 
 
-def save_model(estimator, X, y, sample_coords, groups, filename):
+def save_model(estimator, X, y, groups, filename):
     from sklearn.externals import joblib
-    joblib.dump((estimator, X, y, sample_coords, groups), filename)
+    joblib.dump((estimator, X, y, groups), filename)
 
 
 def load_model(filename):
     from sklearn.externals import joblib
-    estimator, X, y, sample_coords, groups = joblib.load(filename)
+    estimator, X, y, groups = joblib.load(filename)
 
-    return (estimator, X, y, sample_coords, groups)
+    return (estimator, X, y, groups)
 

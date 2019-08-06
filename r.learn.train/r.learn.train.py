@@ -493,7 +493,7 @@ def main():
 
     # Sample training data and group id
     if load_training != '':
-        X, y, group_id, sample_coords = load_training_data(load_training)
+        X, y, group_id = load_training_data(load_training)
     else:
         gs.message('Extracting training data')
 
@@ -503,9 +503,9 @@ def main():
             
         # extract training data
         if training_map != '':
-            X, y, sample_coords = stack.extract_pixels(training_map)
+            X, y = stack.extract_pixels(training_map)
         elif training_points != '':
-            X, y, sample_coords = stack.extract_points(training_points, field)
+            X, y = stack.extract_points(training_points, field)
         
         y = y.flatten()  # reshape to 1 dimension
 
@@ -526,16 +526,13 @@ def main():
         from sklearn.utils import shuffle
         
         if group_id is None:
-            X, y, sample_coords = shuffle(
-                X, y, sample_coords, random_state=random_state)
+            X, y = shuffle(X, y, random_state=random_state)
         else:
-            X, y, sample_coords, group_id = shuffle(
-                X, y, sample_coords, group_id, random_state=random_state)
+            X, y, group_id = shuffle(X, y, group_id, random_state=random_state)
 
         # optionally save extracted data to .csv file
         if save_training != '':
-            save_training_data(
-                X, y, group_id, sample_coords, save_training)
+            save_training_data(X, y, group_id, save_training)
 
     # -------------------------------------------------------------------------
     # Define the inner search resampling method
@@ -725,10 +722,7 @@ def main():
                           fit_params=fit_params)
         
         preds = pd.DataFrame(data=preds, 
-                             columns=['y_pred', 'y_true', 'idx', 'fold'])
-        preds['x_coord'] = sample_coords[:, 0]
-        preds['y_coord'] = sample_coords[:, 1]
-        
+                             columns=['y_pred', 'y_true', 'idx', 'fold'])        
         gs.message(os.linesep)
         gs.message('Global cross validation scores...')
         gs.message(os.linesep)
@@ -762,7 +756,7 @@ def main():
         if preds_file != '':
             preds.to_csv(preds_file, mode='w', index=False)
             text_file = open(preds_file + 't', "w")
-            text_file.write('"Real", "Real", "integer", "integer", "Real", "Real"')
+            text_file.write('"Real", "Real", "integer", "integer"')
             text_file.close()
 
 
