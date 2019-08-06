@@ -69,7 +69,7 @@
 #% label: model_name
 #% description: Supervised learning model to use
 #% answer: RandomForestClassifier
-#% options: LogisticRegression,LinearDiscriminantAnalysis,QuadraticDiscriminantAnalysis,KNeighborsClassifier,GaussianNB,DecisionTreeClassifier,DecisionTreeRegressor,RandomForestClassifier,RandomForestRegressor,ExtraTreesClassifier,ExtraTreesRegressor,GradientBoostingClassifier,GradientBoostingRegressor,SVC,EarthClassifier,EarthRegressor
+#% options: LogisticRegression,LinearRegression,LinearDiscriminantAnalysis,QuadraticDiscriminantAnalysis,KNeighborsClassifier,KNeighborsRegressor,GaussianNB,DecisionTreeClassifier,DecisionTreeRegressor,RandomForestClassifier,RandomForestRegressor,ExtraTreesClassifier,ExtraTreesRegressor,GradientBoostingClassifier,GradientBoostingRegressor,HistGradientBoostingClassifier,HistGradientBoostingRegressor,SVC,SVR,EarthClassifier,EarthRegressor
 #% guisection: Estimator settings
 #% required: no
 #%end
@@ -80,6 +80,16 @@
 #% label: Inverse of regularization strength
 #% description: Inverse of regularization strength (LogisticRegression and SVC)
 #% answer: 1.0
+#% multiple: yes
+#% guisection: Estimator settings
+#%end
+
+#%option
+#% key: epsilon
+#% type: double
+#% label: Epsilon in the SVR model
+#% description: Epsilon in the SVR model
+#% answer: 0.1
 #% multiple: yes
 #% guisection: Estimator settings
 #%end
@@ -227,9 +237,9 @@
 
 #%flag
 #% key: f
-#% label: Feature importances
+#% label: Display Feature importances
 #% description: Display feature importances if supported by selected estimator model
-#% guisection: Cross validation
+#% guisection: Estimator settings
 #%end
 
 #%option G_OPT_F_OUTPUT
@@ -372,6 +382,7 @@ def main():
     grid_search = options['grid_search']
     hyperparams = {
         'C': options['c'],
+        'epsilon': options['epsilon'],
         'min_samples_split': options['min_samples_split'],
         'min_samples_leaf': options['min_samples_leaf'],
         'n_estimators': options['n_estimators'],
@@ -408,6 +419,7 @@ def main():
 
     hyperparams_type = dict.fromkeys(hyperparams, int)
     hyperparams_type['C'] = float
+    hyperparams_type['epsilon'] = float
     hyperparams_type['learning_rate'] = float
     hyperparams_type['subsample'] = float
     hyperparams_type['weights'] = str
@@ -451,10 +463,6 @@ def main():
     # Error checking of input options
     # -------------------------------------------------------------------------
 
-    # feature importances selected by no cross-validation scheme used
-    if importances is True and cv == 1:
-        gs.fatal('Feature importances require cross-validation cv > 1')
-
     # check for field attribute if training_points are used
     if training_points != '' and field == '':
         gs.fatal('No attribute column specified for training points')
@@ -464,15 +472,6 @@ def main():
         grid_search == 'cross-validation'):
         gs.fatal(
             'Hyperparameter search using cross validation requires cv > 1')
-
-    # check the cross-validation occurs if feature importances is True
-    if importances is True and tune_only is True:
-        gs.fatal(
-            'Permutation feature importances require cross validation')
-
-    if importances is True and cv == 1:
-        gs.fatal(
-            'Permutation feature importances require cv > 1')
 
     # -------------------------------------------------------------------------
     # Define RasterStack
@@ -606,31 +605,44 @@ def main():
     
     from sklearn.pipeline import Pipeline
     from sklearn.compose import ColumnTransformer
-    
-    # standardization
+    from sklearn.preprocessing import StandardScaler, OneHotEncoder
+
+    # standardization only
     if norm_data is True and category_maps is None:
-        from sklearn.preprocessing import StandardScaler
         scaler = StandardScaler()
+        trans = ColumnTransformer(
+            remainder='passthrough',
+            transformers=[
+                ('scaling', scaler, range(stack.count))])
+    
+    # one-hot encoding only
+    if norm_data is False and category_maps is not None:
+        enc = OneHotEncoder(handle_unknown='ignore', sparse=False)
+        
+        trans = ColumnTransformer(
+            remainder='passthrough',
+            transformers=[('onehot', enc, stack.categorical)])
+        
+    # standardization and one-hot encoding
+    if norm_data is True and category_maps is not None:
+        scaler = StandardScaler()
+        enc = OneHotEncoder(handle_unknown='ignore', sparse=False)
         
         trans = ColumnTransformer(
             remainder='passthrough',
             transformers=[
-                ('scaling', scaler,
-                 np.setxor1d(range(stack.count),
-                             stack.categorical).astype('int'))])
-        
-    # onehot encoding
-    if category_maps is not None:
-        from sklearn.preprocessing import OneHotEncoder            
-        enc = OneHotEncoder(handle_unknown='ignore', sparse=False)
-        
-        trans.transformers.append(('onehot', enc, stack.categorical))
+                ('onehot', enc, stack.categorical)
+                ('scaling', scaler,  np.setxor1d(
+                        range(stack.count),
+                        stack.categorical).astype('int'))
+                ]
+            )
 
     # combine transformers
     if norm_data is True or category_maps is not None:       
         estimator = Pipeline([('preprocessing', trans),
                               ('estimator', estimator)])
-
+        
     # -------------------------------------------------------------------------
     # Create the hyperparameter grid search method
     # -------------------------------------------------------------------------
@@ -639,11 +651,17 @@ def main():
     if any(param_grid) is True:
 
         # if Pipeline then change param_grid keys to named_step
+        
         if isinstance(estimator, Pipeline):
-            for key in param_grid.keys():
-                newkey = 'estimator__' + key
-                param_grid[newkey] = param_grid.pop(key)
-
+            translate = {}
+            
+            for k, v in param_grid.items():
+                newkey = 'estimator__' + k
+                translate[k] = newkey
+            
+            for old, new in translate.items():
+                param_grid[new] = param_grid.pop(old)
+            
         # create grid search method
         estimator = GridSearchCV(
             estimator=estimator, param_grid=param_grid,
@@ -747,36 +765,39 @@ def main():
             text_file.write('"Real", "Real", "integer", "integer", "Real", "Real"')
             text_file.close()
 
-        # feature importances
-        if importances is True:
-            try:
-                fimp = estimator.feature_importances_
-            except AttributeError:
-                pass
-            try:
-                fimp = estimator.best_estimator_.feature_importances_
-            except AttributeError:
-                pass
-            
-            try:
-                fimp = pd.DataFrame({'Feature': maplist, 'Importances': fimp})
-                
-                gs.message(os.linesep)
-                gs.message('Feature importances')
-                gs.message('Feature' + '\t' + 'Score')
-                
-                for index, row in fimp.iterrows():    
-                    gs.message(row['Feature'] + '\t' + str(row['Importances']))
 
-                if fimp_file != '':
-                    fimp.to_csv(fimp_file, index=False)
-            except:
-                gs.warning('Feature importances not available for the '
-                           'selected estimator model')
+    # ---------------------------------------------------------------------
+    # Feature Importances
+    # ---------------------------------------------------------------------
+    if importances is True:
+        try:
+            fimp = estimator.feature_importances_
+        except AttributeError:
+            pass
+        try:
+            fimp = estimator.best_estimator_.feature_importances_
+        except AttributeError:
+            pass
+        
+        try:
+            fimp = pd.DataFrame({'Feature': maplist, 'Importances': fimp})
+            
+            gs.message(os.linesep)
+            gs.message('Feature importances')
+            gs.message('Feature' + '\t' + 'Score')
+            
+            for index, row in fimp.iterrows():    
+                gs.message(row['Feature'] + '\t' + str(row['Importances']))
+
+            if fimp_file != '':
+                fimp.to_csv(fimp_file, index=False)
+        except:
+            gs.warning('Feature importances not available for the '
+                       'selected estimator model')
 
     # Save the fitted model
     import joblib
-    joblib.dump((X, y, sample_coords, group_id, estimator), model_save)
+    joblib.dump((estimator, y), model_save)
 
 
 if __name__ == "__main__":

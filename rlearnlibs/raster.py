@@ -4,8 +4,7 @@ import numpy as np
 import grass.script as gs
 import pandas as pd
 import os
-import sqlite3
-from grass.pygrass.raster import RasterRow
+from grass.pygrass.raster import RasterRow, numpy2raster
 from grass.pygrass.gis.region import Region
 from grass.pygrass.raster.buffer import Buffer
 from grass.pygrass.vector import VectorTopo
@@ -20,7 +19,7 @@ from indexing import ExtendedDict, LinkedList
 
 class RasterStack(object):
 
-    def __init__(self, rasters, group=None):
+    def __init__(self, rasters=None, group=None):
         """A RasterStack enables a collection of raster layers to be bundled
         into a single RasterStack object.
         
@@ -161,7 +160,7 @@ class RasterStack(object):
             mapnames = [mapnames]
         
         # reset existing attributes
-        for name in self.layers.keys():
+        for name in list(self.layers.keys()):
             delattr(self, name)
 
         self.loc = ExtendedDict(self)
@@ -185,7 +184,7 @@ class RasterStack(object):
                     valid_name = ras_name.replace('.', '_')
                     
                     # grass gis raster could have same name if in diff mapset
-                    if valid_name in self.layers.keys():
+                    if valid_name in list(self.layers.keys()):
                         raise ValueError(
                                 'Cannot append map {name} to the '
                                 'RasterStack because a map with the same name '
@@ -248,7 +247,7 @@ class RasterStack(object):
             other = [other]
             
         if in_place is True:
-            self.layers = self.layers.keys() + other
+            self.layers = list(self.layers.keys()) + other
             
         else:
             new_raster = RasterStack(
@@ -537,17 +536,18 @@ class RasterStack(object):
         func = self._pred_fun
 
         # determine dtype
-        test_window = list(self.row_windows(height=height))[0]
+        test_window = list(self.row_windows(height=1))[0]
         img = self.read(window=test_window)
         result = func(img, estimator)
         
-        if result.dtype == 'float':
+        try:
+            np.finfo(result.dtype)
             mtype = 'FCELL'
             nodata = np.nan
-        else:
+        except:
             mtype = 'CELL'
-            nodata = -2147483648
-        
+            nodata = -2147483648    
+            
         # determine whether multi-target
         if result.shape[0] > 1:
             n_outputs = result.shape[result.ndim-1]
@@ -565,26 +565,36 @@ class RasterStack(object):
         if len(indexes) > 1:
             self._predict_multi(
                 estimator, reg, indexes, indexes, height, func, output,
-                overwrite)    
+                overwrite)
         else:
-            with RasterRow(output, mode='w', overwrite=overwrite) as dst:
+            if height is not None:
+
+                with RasterRow(output, mode='w', mtype=mtype, 
+                               overwrite=overwrite) as dst:                
+                    n_windows = len(
+                        [i for i in self.row_windows(height=height)])
                 
-                n_windows = len([i for i in self.row_windows(height=height)])
+                    data_gen = ((wi, self.read(window=window)) 
+                        for wi, window in enumerate(self.row_windows(height=height)))
+            
+                    for wi, arr in data_gen:
+                        gs.percent(wi, n_windows, 1)
+                        result = func(arr, estimator)
+                        result = np.ma.filled(result, nodata)
+                            
+                        # writing data to GRASS raster row-by-row
+                        for i in range(result.shape[1]):
+                            newrow = Buffer((reg.cols,), mtype=mtype)
+                            newrow[:] = result[0, i, :]
+                            dst.put_row(newrow)
                 
-                data_gen = ((wi, self.read(window=window)) 
-                    for wi, window in enumerate(self.row_windows(height=height)))
-        
-                for wi, arr in data_gen:
-                    
-                    gs.percent(wi, n_windows, 1)
-                    result = func(arr, estimator)
-                    result = np.ma.filled(result, nodata)
-                        
-                    # writing data to GRASS raster row-by-row
-                    for i in range(result.shape[1]):
-                        newrow = Buffer((reg.cols,), mtype=mtype)
-                        newrow[:] = result[0, i, :]
-                        dst.put_row(newrow)
+            else:
+                arr = self.read()
+                result = func(arr, estimator)
+                result = np.ma.filled(result, nodata)
+                numpy2raster(result[0, :, :], mtype=mtype, 
+                             rastname=output,
+                             overwrite=overwrite)
 
         return None
 
@@ -617,7 +627,7 @@ class RasterStack(object):
 
         # use class labels if supplied else output preds as 0,1,2...n
         if class_labels is None:
-            test_window = list(self.row_windows(height=height))[0]
+            test_window = list(self.row_windows(height=1))[0]
             img = self.read(window=test_window)
             result = func(img, estimator)            
             class_labels = range(result.shape[2])
@@ -638,39 +648,51 @@ class RasterStack(object):
     def _predict_multi(self, estimator, region, indexes, class_labels, height,
                        func, output, overwrite):
         
-        # create and open rasters for writing
-        dst = []
-        
-        for i, label in enumerate(class_labels):
-            rastername = output + '_' + str(label)
-            dst.append(RasterRow(rastername))
-            dst[i].open('w', mtype='FCELL', overwrite=overwrite)
+        # create and open rasters for writing if incremental reading
+        if height is not None:
+            dst = []
+            
+            for i, label in enumerate(class_labels):
+                rastername = output + '_' + str(label)
+                dst.append(RasterRow(rastername))
+                dst[i].open('w', mtype='FCELL', overwrite=overwrite)
 
-        # create data reader generator
-        n_windows = len([i for i in self.row_windows(height=height)])
-        
-        data_gen = ((wi, self.read(window=window)) 
-            for wi, window in enumerate(self.row_windows(height=height)))
-
+            # create data reader generator
+            n_windows = len([i for i in self.row_windows(height=height)])
+            
+            data_gen = ((wi, self.read(window=window)) 
+                for wi, window in enumerate(self.row_windows(height=height)))
+    
         # perform prediction
         try:
-            for wi, arr in data_gen:
-                gs.percent(wi, n_windows, 1)
+            if height is not None:
+                for wi, arr in data_gen:
+                    gs.percent(wi, n_windows, 1)
+                    result = func(arr, estimator)
+                    result = np.ma.filled(result, np.nan)
+    
+                    # write multiple features to GRASS GIS rasters
+                    for i, arr_index in enumerate(indexes):
+                        for row in range(result.shape[1]):
+                            newrow = Buffer((region.cols, ), mtype='FCELL')
+                            newrow[:] = result[arr_index, row, :]
+                            dst[i].put_row(newrow)
+            else:
+                arr = self.read()
                 result = func(arr, estimator)
                 result = np.ma.filled(result, np.nan)
-
-                # write multiple features to GRASS GIS rasters
+                
                 for i, arr_index in enumerate(indexes):
-                    for row in range(result.shape[1]):
-                        newrow = Buffer((region.cols, ), mtype='FCELL')
-                        newrow[:] = result[arr_index, row, :]
-                        dst[i].put_row(newrow)
+                    numpy2raster(result[arr_index, :, :], mtype='FCELL', 
+                                 rastname=rastername[i],
+                                 overwrite=overwrite)
         except:
             gs.fatal('Error in raster prediction')
         
         finally:
-            for i in dst:
-                i.close()
+            if height is not None:
+                for i in dst:
+                    i.close()
 
     def row_windows(self, region=None, height=25):
         """Returns an generator for row increments, tuple (startrow, endrow).
@@ -764,38 +786,18 @@ class RasterStack(object):
             The coordinates of the sampled data are also returned as x, y
             columns and the index of the dataframe uses the GRASS cat field.
         """
-        
-        reg = Region()
-        
+                
         if isinstance(fields, str):
             fields = [fields]
                 
         # open grass vector
         with VectorTopo(vect_name.split('@')[0], mode='r') as points:
     
-            # get only points in current region
-            points_in_reg = [i for i in 
-                             points.find_by_bbox.geos(reg.get_bbox())]
-            n_points = len(points_in_reg)
-            current_reg_cat = [i.cat for i in points_in_reg]
-            
-            # create link to attribute table
-            points.dblinks.by_name(name=vect_name)
-    
-            # read table fields to dataframe
-            table = points.table
-            key = table.key
-            sqlpath = (gs.read_command('db.databases', driver='sqlite').
-                       strip(os.linesep))
-            con = sqlite3.connect(sqlpath)
-            
-            df = (pd.read_sql_query(
-                    'SELECT {fields} FROM {name} WHERE {key} IN ({vals})'.
-                    format(fields=','.join(fields + [key]), 
-                           name=table.name,
-                           key=key,
-                           vals=','.join(map(str, current_reg_cat))), con))
-            con.close()
+            df = pd.DataFrame(points.table_to_dict()).transpose()
+            df_cols = points.table.columns
+            df_cols = [name for (name, dtype) in df_cols.items()]
+            df = df.rename(columns={old:new for old, new in zip(df.columns, df_cols)})
+            df = df.loc[:, fields + [points.table.key]]
     
             # extract raster data    
             for name, src in self.loc.items():
@@ -806,14 +808,27 @@ class RasterStack(object):
                 
                 rast_data = rast_data.split(os.linesep)[:-1]
                 
-                X = (np.asarray([float(k.split('|')[1])
+                X = (np.asarray([k.split('|')[1]
                     if k.split('|')[1] != '*' else np.nan for k in rast_data]))
-                
-                df[name] = X
+
+                cat = (np.asarray([k.split('|')[0]
+                    if k.split('|')[1] != '*' else self._cell_nodata for k in rast_data]))
+                cat = [int(i) for i in cat]
             
+                src.open('r')
+                if src.mtype == 'CELL':
+                    X = [int(i) for i in X]
+                else:
+                    X = [float(i) for i in X]
+                src.close()
+                
+                X = pd.DataFrame(data=np.column_stack((X, cat)), 
+                                 columns=[name, points.table.key])
+                df = df.merge(X, on=points.table.key)
+                            
             # get coordinate and id values
-            coordinates = np.zeros((n_points, 2))
-            for i, p in enumerate(points_in_reg):
+            coordinates = np.zeros((points.num_primitives()['point'], 2))
+            for i, p in enumerate(points):
                 coordinates[i, :] = np.asarray(p.coords())
             
             df['x'] = coordinates[:, 0]

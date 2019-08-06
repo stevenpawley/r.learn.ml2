@@ -65,8 +65,8 @@ def model_classifiers(estimator, random_state, n_jobs, p, weights=None):
     mode (string): Flag to indicate whether classifier performs classification
         or regression
     """
-
-    from sklearn.linear_model import LogisticRegression
+    from sklearn.experimental import enable_hist_gradient_boosting     
+    from sklearn.linear_model import LogisticRegression, LinearRegression
     from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
     from sklearn.discriminant_analysis import QuadraticDiscriminantAnalysis
     from sklearn.naive_bayes import GaussianNB
@@ -74,9 +74,11 @@ def model_classifiers(estimator, random_state, n_jobs, p, weights=None):
     from sklearn.ensemble import (
         RandomForestClassifier, RandomForestRegressor, ExtraTreesClassifier,
         ExtraTreesRegressor)
-    from sklearn.ensemble import GradientBoostingClassifier, GradientBoostingRegressor
-    from sklearn.svm import SVC
-    from sklearn.neighbors import KNeighborsClassifier
+    from sklearn.ensemble import (
+            GradientBoostingClassifier, GradientBoostingRegressor,
+            HistGradientBoostingClassifier, HistGradientBoostingRegressor)
+    from sklearn.svm import SVC, SVR
+    from sklearn.neighbors import KNeighborsClassifier, KNeighborsRegressor
 
     # convert balanced boolean to scikit learn method
     if weights is True:
@@ -106,6 +108,8 @@ def model_classifiers(estimator, random_state, n_jobs, p, weights=None):
                        class_weight=weights,
                        probability=True,
                        random_state=random_state),
+            'SVR': SVR(C=p['C'],
+                       epsilon=p['epsilon']),
             'LogisticRegression':
                 LogisticRegression(C=p['C'],
                                    class_weight=weights,
@@ -113,6 +117,9 @@ def model_classifiers(estimator, random_state, n_jobs, p, weights=None):
                                    random_state=random_state,
                                    n_jobs=n_jobs,
                                    fit_intercept=True),
+            'LinearRegression':
+                LinearRegression(n_jobs=n_jobs,
+                                 fit_intercept=True),
             'DecisionTreeClassifier':
                 DecisionTreeClassifier(max_depth=p['max_depth'],
                                        max_features=p['max_features'],
@@ -177,12 +184,33 @@ def model_classifiers(estimator, random_state, n_jobs, p, weights=None):
                                           subsample=p['subsample'],
                                           max_features=p['max_features'],
                                           random_state=random_state),
+            'HistGradientBoostingClassifier':
+                GradientBoostingClassifier(learning_rate=p['learning_rate'],
+                                           n_estimators=p['n_estimators'],
+                                           max_depth=p['max_depth'],
+                                           min_samples_split=p['min_samples_split'],
+                                           min_samples_leaf=p['min_samples_leaf'],
+                                           subsample=p['subsample'],
+                                           max_features=p['max_features'],
+                                           random_state=random_state),
+            'HistGradientBoostingRegressor':
+                GradientBoostingRegressor(learning_rate=p['learning_rate'],
+                                          n_estimators=p['n_estimators'],
+                                          max_depth=p['max_depth'],
+                                          min_samples_split=p['min_samples_split'],
+                                          min_samples_leaf=p['min_samples_leaf'],
+                                          subsample=p['subsample'],
+                                          max_features=p['max_features'],
+                                          random_state=random_state),
             'GaussianNB': GaussianNB(),
             'LinearDiscriminantAnalysis': LinearDiscriminantAnalysis(),
             'QuadraticDiscriminantAnalysis': QuadraticDiscriminantAnalysis(),
             'KNeighborsClassifier': KNeighborsClassifier(n_neighbors=p['n_neighbors'],
                                                          weights=p['weights'],
-                                                         n_jobs=n_jobs)
+                                                         n_jobs=n_jobs),
+            'KNeighborsRegressor': KNeighborsRegressor(n_neighbors=p['n_neighbors'],
+                                                       weights=p['weights'],
+                                                       n_jobs=n_jobs)
         }
 
     # define classifier
@@ -246,8 +274,7 @@ def scoring_metrics(mode):
             'mean_squared_error': metrics.mean_squared_error
             }
         
-        search_scorer = make_scorer(
-                metrics.mean_squared_error, greater_is_better=False)
+        search_scorer = make_scorer(metrics.r2_score)
     
     return(scoring, search_scorer)
 

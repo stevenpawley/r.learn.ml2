@@ -75,6 +75,7 @@ import sys
 import grass.script as gs
 import numpy as np
 from grass.script.utils import get_lib_path
+from grass.pygrass.gis.region import Region
 
 path = get_lib_path(modname='r.learn.ml')
 if path is None:
@@ -117,7 +118,7 @@ def main():
     # -------------------------------------------------------------------------
     # Reload fitted model and trainign data
     # -------------------------------------------------------------------------
-    X, y, sample_coords, group_id, estimator = joblib.load(model_load)
+    estimator, y = joblib.load(model_load)
     
     # -------------------------------------------------------------------------
     # Define RasterStack
@@ -135,22 +136,23 @@ def main():
     # -------------------------------------------------------------------------
 
     # calculate chunksize
+    region = Region()
     row = stack.read(1)
     rowsize_mg = row.nbytes * 1e-6
     row_incr = int(float(chunksize) / float(rowsize_mg))
-
+    
+    # do not read by increments if increment > n_rows
+    if row_incr >= region.rows:
+        row_incr = None
+        
     # prediction
     if prob_only is False:
-    
         gs.message('Predicting classification/regression raster...')
-
         stack.predict(estimator=estimator, output=output, height=row_incr,
                       overwrite=gs.overwrite())
 
     if probability is True:
-    
         gs.message('Predicting class probabilities...')
-    
         stack.predict_proba(
             estimator=estimator, output=output,
             class_labels=np.unique(y),
