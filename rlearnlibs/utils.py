@@ -66,6 +66,11 @@ def model_classifiers(estimator, random_state, n_jobs, p, weights=None):
     mode (string): Flag to indicate whether classifier performs classification
         or regression
     """
+    try:
+        from sklearn.experimental import enable_hist_gradient_boosting
+    except ImportError:
+        pass
+    
     from sklearn.linear_model import LogisticRegression, LinearRegression
     from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
     from sklearn.discriminant_analysis import QuadraticDiscriminantAnalysis
@@ -213,7 +218,12 @@ def model_classifiers(estimator, random_state, n_jobs, p, weights=None):
         }
 
     # define classifier
-    clf = classifiers[estimator]
+    try:
+        clf = classifiers[estimator]
+    except:
+        gs.fatal('HistGradienBoostingClassifier and ' 
+           'HistGradientBoostingRegressor only available on '
+           'scikit-learn version >= 0.21.3')
 
     # classification or regression
     if estimator == 'LogisticRegression' \
