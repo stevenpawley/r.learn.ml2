@@ -289,16 +289,22 @@ def scoring_metrics(mode):
 
 
 
-def save_training_data(X, y, groups, file):
+def save_training_data(X, y, cat, groups, file):
     """
-    Saves any extracted training data to a csv file
+    Saves any extracted training data to a csv file.
+    
+    Training data is saved in the following format:
+        col (0..n) : feature data
+        col (n) : response data
+        col (n+1): grass cat value
+        col (n+2): group idx
 
     Args
     ----
     X (2d numpy array): Numpy array containing predictor values
     y (1d numpy array): Numpy array containing labels
+    cat (1d numpy array): Numpy array of GRASS key column
     groups (1d numpy array): Numpy array of group labels
-    coords (2d numpy array): Numpy array containing xy coordinates of samples
     file (string): Path to a csv file to save data to
     """
 
@@ -307,7 +313,7 @@ def save_training_data(X, y, groups, file):
         groups = np.empty((y.shape[0]))
         groups[:] = np.nan
 
-    training_data = np.column_stack([X, y, groups])
+    training_data = np.column_stack([X, y, cat, groups])
     np.savetxt(file, training_data, delimiter=',')
 
 
@@ -323,8 +329,8 @@ def load_training_data(file):
     -------
     X (2d numpy array): Numpy array containing predictor values
     y (1d numpy array): Numpy array containing labels
+    cat (1d numpy array): Numpy array of GRASS key column
     groups (1d numpy array): Numpy array of group labels, or None
-    coords (2d numpy array): Numpy array containing x,y coordinates of samples
     """
 
     training_data = np.loadtxt(file, delimiter=',')
@@ -340,19 +346,7 @@ def load_training_data(file):
 
     # fetch X and y
     X = training_data[:, 0:last_Xcol]
-    y = training_data[:, -2]
+    y = training_data[:, -3]
+    cat = training_data[:, -2]
 
-    return(X, y, groups)
-
-
-def save_model(estimator, X, y, groups, filename):
-    from sklearn.externals import joblib
-    joblib.dump((estimator, X, y, groups), filename)
-
-
-def load_model(filename):
-    from sklearn.externals import joblib
-    estimator, X, y, groups = joblib.load(filename)
-
-    return (estimator, X, y, groups)
-
+    return(X, y, cat, groups)

@@ -747,14 +747,16 @@ class RasterStack(object):
         if (y % 1).all() == 0:
             y = y.astype('int')
         
+        cat = np.arange(0, y.shape[0])
+        
         if as_df is True:
             data = pd.DataFrame(
-                data=data, 
-                columns=[response] + self.names)
+                data=np.column_stack((cat, data)), 
+                columns=['cat'] + [response] + self.names)
             
             return data
                     
-        return X, y
+        return X, y, cat
 
     def extract_points(self, vect_name, fields, na_rm=True, as_df=False):
         """Samples a list of GDAL rasters using a point data set.
@@ -793,6 +795,8 @@ class RasterStack(object):
                 
         # open grass vector
         with VectorTopo(vect_name.split('@')[0], mode='r') as points:
+            
+            key_col = points.table.key
                 
             # read table for all points (irrespective of comp region)
             df = pd.DataFrame(points.table_to_dict()).transpose()
@@ -800,6 +804,8 @@ class RasterStack(object):
             df_cols = [name for (name, dtype) in df_cols.items()]
             df = df.rename(columns={old:new for old, new in zip(df.columns, df_cols)})
             df = df.loc[:, fields + [points.table.key]]
+            
+            Xs = []
     
             # extract raster data    
             for name, src in self.loc.items():
@@ -826,8 +832,11 @@ class RasterStack(object):
                 src.close()
                 
                 X = pd.DataFrame(data=np.column_stack((X, cat)), 
-                                 columns=[name, points.table.key])
-                df = df.merge(X, on=points.table.key)
+                                 columns=[name, key_col])
+                Xs.append(X)
+        
+        for X in Xs:
+            df = df.merge(X, on=key_col)
                                     
         # set any grass integer nodata values to NaN
         df = df.replace(self._cell_nodata, np.nan)
@@ -847,7 +856,8 @@ class RasterStack(object):
             
             X = df.loc[:, df.columns.isin(self.loc.keys())].values
             y = df.loc[:, fields].values
-            return X, y
+            cat = df.loc[:, key_col].values
+            return X, y, cat
 
         return df
 

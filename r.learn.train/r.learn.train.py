@@ -493,7 +493,7 @@ def main():
 
     # Sample training data and group id
     if load_training != '':
-        X, y, group_id = load_training_data(load_training)
+        X, y, cat, group_id = load_training_data(load_training)
     else:
         gs.message('Extracting training data')
 
@@ -503,11 +503,12 @@ def main():
             
         # extract training data
         if training_map != '':
-            X, y = stack.extract_pixels(training_map)
+            X, y, cat = stack.extract_pixels(training_map)
         elif training_points != '':
-            X, y = stack.extract_points(training_points, field)
-        
+            X, y, cat = stack.extract_points(training_points, field)
+                
         y = y.flatten()  # reshape to 1 dimension
+        cat = cat.flatten()
 
         # take group id from last column and remove from predictors
         if group_raster != '':
@@ -526,13 +527,14 @@ def main():
         from sklearn.utils import shuffle
         
         if group_id is None:
-            X, y = shuffle(X, y, random_state=random_state)
+            X, y, cat = shuffle(X, y, cat, random_state=random_state)
         else:
-            X, y, group_id = shuffle(X, y, group_id, random_state=random_state)
+            X, y, cat, group_id = shuffle(
+                X, y, cat, group_id, random_state=random_state)
 
         # optionally save extracted data to .csv file
         if save_training != '':
-            save_training_data(X, y, group_id, save_training)
+            save_training_data(X, y, cat, group_id, save_training)
 
     # -------------------------------------------------------------------------
     # Define the inner search resampling method
@@ -718,11 +720,11 @@ def main():
             all([0, 1] == np.unique(y))):    
             scoring['roc_auc'] = metrics.roc_auc_score    
         
-        preds = cross_val(estimator=estimator, X=X, y=y, cv=outer, 
-                          fit_params=fit_params)
+        preds = cross_val(estimator=estimator, X=X, y=y, idx=cat, cv=outer,
+                          n_jobs=n_jobs, fit_params=fit_params)
         
         preds = pd.DataFrame(data=preds, 
-                             columns=['y_pred', 'y_true', 'idx', 'fold'])        
+                             columns=['y_pred', 'y_true', 'cat', 'fold'])        
         gs.message(os.linesep)
         gs.message('Global cross validation scores...')
         gs.message(os.linesep)
@@ -761,7 +763,6 @@ def main():
 
 
     # ---------------------------------------------------------------------
-    # Feature Importances
     # ---------------------------------------------------------------------
     if importances is True:
         try:
