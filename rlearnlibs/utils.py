@@ -335,18 +335,19 @@ def load_training_data(file):
 
     training_data = np.loadtxt(file, delimiter=',')
     n_cols = training_data.shape[1]
-    last_Xcol = n_cols-2
+    last_Xcol = n_cols-3
 
-    # check to see if last column contains group labels or nans
+    # group_ids stored in last column
     groups = training_data[:, -1]
 
-    # if all nans then set groups to None
     if bool(np.isnan(groups).all()) is True:
         groups = None
-
-    # fetch X and y
-    X = training_data[:, 0:last_Xcol]
-    y = training_data[:, -3]
+        
+    # cat stored in 2nd last column
     cat = training_data[:, -2]
+    
+    # response stored in 3rd last column
+    y = training_data[:, -3]
+    X = training_data[:, 0:last_Xcol]
 
-    return(X, y, cat, groups)
+    return (X, y, cat, groups)
