@@ -89,133 +89,117 @@ def model_classifiers(estimator, random_state, n_jobs, p, weights=None):
         weights = 'balanced'
     else: weights = None
 
-    # optional packages that add additional classifiers here
-    if estimator == 'EarthClassifier' or estimator == 'EarthRegressor':
-        try:
-            from sklearn.pipeline import Pipeline
-            from pyearth import Earth
-
-            earth_classifier = Pipeline(
-                [('classifier', Earth(max_degree=p['max_degree'])),
-                 ('Logistic', LogisticRegression(n_jobs=n_jobs))])
-
-            classifiers = {
-                'EarthClassifier': earth_classifier,
-                'EarthRegressor': Earth(max_degree=p['max_degree'])
-                }
-        except:
-            gs.fatal('Py-earth package not installed')
-    else:
-        # core sklearn classifiers go here
-        classifiers = {
-            'SVC': SVC(C=p['C'],
-                       class_weight=weights,
-                       probability=True,
-                       random_state=random_state),
-            'SVR': SVR(C=p['C'],
-                       epsilon=p['epsilon']),
-            'LogisticRegression':
-                LogisticRegression(C=p['C'],
+    classifiers = {
+        'SVC': SVC(C=p['C'],
+                   class_weight=weights,
+                   probability=True,
+                   random_state=random_state),
+        'SVR': SVR(C=p['C'],
+                   epsilon=p['epsilon']),
+        'LogisticRegression':
+            LogisticRegression(C=p['C'],
+                               class_weight=weights,
+                               solver='liblinear',
+                               random_state=random_state,
+                               n_jobs=n_jobs,
+                               fit_intercept=True),
+        'LinearRegression':
+            LinearRegression(n_jobs=n_jobs,
+                             fit_intercept=True),
+        'DecisionTreeClassifier':
+            DecisionTreeClassifier(max_depth=p['max_depth'],
+                                   max_features=p['max_features'],
+                                   min_samples_split=p['min_samples_split'],
+                                   min_samples_leaf=p['min_samples_leaf'],
                                    class_weight=weights,
-                                   solver='liblinear',
+                                   random_state=random_state),
+        'DecisionTreeRegressor':
+            DecisionTreeRegressor(max_features=p['max_features'],
+                                  min_samples_split=p['min_samples_split'],
+                                  min_samples_leaf=p['min_samples_leaf'],
+                                  random_state=random_state),
+        'RandomForestClassifier':
+            RandomForestClassifier(n_estimators=p['n_estimators'],
+                                   max_features=p['max_features'],
+                                   min_samples_split=p['min_samples_split'],
+                                   min_samples_leaf=p['min_samples_leaf'],
+                                   class_weight=weights,
                                    random_state=random_state,
                                    n_jobs=n_jobs,
-                                   fit_intercept=True),
-            'LinearRegression':
-                LinearRegression(n_jobs=n_jobs,
-                                 fit_intercept=True),
-            'DecisionTreeClassifier':
-                DecisionTreeClassifier(max_depth=p['max_depth'],
-                                       max_features=p['max_features'],
+                                   oob_score=True),
+        'RandomForestRegressor':
+            RandomForestRegressor(n_estimators=p['n_estimators'],
+                                  max_features=p['max_features'],
+                                  min_samples_split=p['min_samples_split'],
+                                  min_samples_leaf=p['min_samples_leaf'],
+                                  random_state=random_state,
+                                  n_jobs=n_jobs,
+                                  oob_score=True),
+        'ExtraTreesClassifier':
+            ExtraTreesClassifier(n_estimators=p['n_estimators'],
+                                 max_features=p['max_features'],
+                                 min_samples_split=p['min_samples_split'],
+                                 min_samples_leaf=p['min_samples_leaf'],
+                                 class_weight=weights,
+                                 random_state=random_state,
+                                 n_jobs=n_jobs,
+                                 bootstrap=True,
+                                 oob_score=True),
+        'ExtraTreesRegressor':
+            ExtraTreesRegressor(n_estimators=p['n_estimators'],
+                                max_features=p['max_features'],
+                                min_samples_split=p['min_samples_split'],
+                                min_samples_leaf=p['min_samples_leaf'],
+                                random_state=random_state,
+                                bootstrap=True,
+                                n_jobs=n_jobs,
+                                oob_score=True),
+        'GradientBoostingClassifier':
+            GradientBoostingClassifier(learning_rate=p['learning_rate'],
+                                       n_estimators=p['n_estimators'],
+                                       max_depth=p['max_depth'],
                                        min_samples_split=p['min_samples_split'],
                                        min_samples_leaf=p['min_samples_leaf'],
-                                       class_weight=weights,
+                                       subsample=p['subsample'],
+                                       max_features=p['max_features'],
                                        random_state=random_state),
-            'DecisionTreeRegressor':
-                DecisionTreeRegressor(max_features=p['max_features'],
+        'GradientBoostingRegressor':
+            GradientBoostingRegressor(learning_rate=p['learning_rate'],
+                                      n_estimators=p['n_estimators'],
+                                      max_depth=p['max_depth'],
                                       min_samples_split=p['min_samples_split'],
                                       min_samples_leaf=p['min_samples_leaf'],
+                                      subsample=p['subsample'],
+                                      max_features=p['max_features'],
                                       random_state=random_state),
-            'RandomForestClassifier':
-                RandomForestClassifier(n_estimators=p['n_estimators'],
-                                       max_features=p['max_features'],
+        'HistGradientBoostingClassifier':
+            GradientBoostingClassifier(learning_rate=p['learning_rate'],
+                                       n_estimators=p['n_estimators'],
+                                       max_depth=p['max_depth'],
                                        min_samples_split=p['min_samples_split'],
                                        min_samples_leaf=p['min_samples_leaf'],
-                                       class_weight=weights,
-                                       random_state=random_state,
-                                       n_jobs=n_jobs,
-                                       oob_score=False),
-            'RandomForestRegressor':
-                RandomForestRegressor(n_estimators=p['n_estimators'],
-                                      max_features=p['max_features'],
+                                       subsample=p['subsample'],
+                                       max_features=p['max_features'],
+                                       random_state=random_state),
+        'HistGradientBoostingRegressor':
+            GradientBoostingRegressor(learning_rate=p['learning_rate'],
+                                      n_estimators=p['n_estimators'],
+                                      max_depth=p['max_depth'],
                                       min_samples_split=p['min_samples_split'],
                                       min_samples_leaf=p['min_samples_leaf'],
-                                      random_state=random_state,
-                                      n_jobs=n_jobs,
-                                      oob_score=False),
-            'ExtraTreesClassifier':
-                ExtraTreesClassifier(n_estimators=p['n_estimators'],
-                                     max_features=p['max_features'],
-                                     min_samples_split=p['min_samples_split'],
-                                     min_samples_leaf=p['min_samples_leaf'],
-                                     class_weight=weights,
-                                     random_state=random_state,
-                                     n_jobs=n_jobs,
-                                     oob_score=False),
-            'ExtraTreesRegressor':
-                ExtraTreesRegressor(n_estimators=p['n_estimators'],
-                                    max_features=p['max_features'],
-                                    min_samples_split=p['min_samples_split'],
-                                    min_samples_leaf=p['min_samples_leaf'],
-                                    random_state=random_state,
-                                    n_jobs=n_jobs,
-                                    oob_score=False),
-            'GradientBoostingClassifier':
-                GradientBoostingClassifier(learning_rate=p['learning_rate'],
-                                           n_estimators=p['n_estimators'],
-                                           max_depth=p['max_depth'],
-                                           min_samples_split=p['min_samples_split'],
-                                           min_samples_leaf=p['min_samples_leaf'],
-                                           subsample=p['subsample'],
-                                           max_features=p['max_features'],
-                                           random_state=random_state),
-            'GradientBoostingRegressor':
-                GradientBoostingRegressor(learning_rate=p['learning_rate'],
-                                          n_estimators=p['n_estimators'],
-                                          max_depth=p['max_depth'],
-                                          min_samples_split=p['min_samples_split'],
-                                          min_samples_leaf=p['min_samples_leaf'],
-                                          subsample=p['subsample'],
-                                          max_features=p['max_features'],
-                                          random_state=random_state),
-            'HistGradientBoostingClassifier':
-                GradientBoostingClassifier(learning_rate=p['learning_rate'],
-                                           n_estimators=p['n_estimators'],
-                                           max_depth=p['max_depth'],
-                                           min_samples_split=p['min_samples_split'],
-                                           min_samples_leaf=p['min_samples_leaf'],
-                                           subsample=p['subsample'],
-                                           max_features=p['max_features'],
-                                           random_state=random_state),
-            'HistGradientBoostingRegressor':
-                GradientBoostingRegressor(learning_rate=p['learning_rate'],
-                                          n_estimators=p['n_estimators'],
-                                          max_depth=p['max_depth'],
-                                          min_samples_split=p['min_samples_split'],
-                                          min_samples_leaf=p['min_samples_leaf'],
-                                          subsample=p['subsample'],
-                                          max_features=p['max_features'],
-                                          random_state=random_state),
-            'GaussianNB': GaussianNB(),
-            'LinearDiscriminantAnalysis': LinearDiscriminantAnalysis(),
-            'QuadraticDiscriminantAnalysis': QuadraticDiscriminantAnalysis(),
-            'KNeighborsClassifier': KNeighborsClassifier(n_neighbors=p['n_neighbors'],
-                                                         weights=p['weights'],
-                                                         n_jobs=n_jobs),
-            'KNeighborsRegressor': KNeighborsRegressor(n_neighbors=p['n_neighbors'],
-                                                       weights=p['weights'],
-                                                       n_jobs=n_jobs)
-        }
+                                      subsample=p['subsample'],
+                                      max_features=p['max_features'],
+                                      random_state=random_state),
+        'GaussianNB': GaussianNB(),
+        'LinearDiscriminantAnalysis': LinearDiscriminantAnalysis(),
+        'QuadraticDiscriminantAnalysis': QuadraticDiscriminantAnalysis(),
+        'KNeighborsClassifier': KNeighborsClassifier(n_neighbors=p['n_neighbors'],
+                                                     weights=p['weights'],
+                                                     n_jobs=n_jobs),
+        'KNeighborsRegressor': KNeighborsRegressor(n_neighbors=p['n_neighbors'],
+                                                   weights=p['weights'],
+                                                   n_jobs=n_jobs)
+    }
 
     # define classifier
     try:
@@ -231,10 +215,10 @@ def model_classifiers(estimator, random_state, n_jobs, p, weights=None):
         or estimator == 'RandomForestClassifier' \
         or estimator == 'ExtraTreesClassifier' \
         or estimator == 'GradientBoostingClassifier' \
+        or estimator == 'HistGradientBoostingClassifier' \
         or estimator == 'GaussianNB' \
         or estimator == 'LinearDiscriminantAnalysis' \
         or estimator == 'QuadraticDiscriminantAnalysis' \
-        or estimator == 'EarthClassifier' \
         or estimator == 'SVC' \
         or estimator == 'KNeighborsClassifier':
         mode = 'classification'

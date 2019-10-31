@@ -69,7 +69,7 @@
 #% label: model_name
 #% description: Supervised learning model to use
 #% answer: RandomForestClassifier
-#% options: LogisticRegression,LinearRegression,LinearDiscriminantAnalysis,QuadraticDiscriminantAnalysis,KNeighborsClassifier,KNeighborsRegressor,GaussianNB,DecisionTreeClassifier,DecisionTreeRegressor,RandomForestClassifier,RandomForestRegressor,ExtraTreesClassifier,ExtraTreesRegressor,GradientBoostingClassifier,GradientBoostingRegressor,HistGradientBoostingClassifier,HistGradientBoostingRegressor,SVC,SVR,EarthClassifier,EarthRegressor
+#% options: LogisticRegression,LinearRegression,LinearDiscriminantAnalysis,QuadraticDiscriminantAnalysis,KNeighborsClassifier,KNeighborsRegressor,GaussianNB,DecisionTreeClassifier,DecisionTreeRegressor,RandomForestClassifier,RandomForestRegressor,ExtraTreesClassifier,ExtraTreesRegressor,GradientBoostingClassifier,GradientBoostingRegressor,HistGradientBoostingClassifier,HistGradientBoostingRegressor,SVC,SVR
 #% guisection: Estimator settings
 #% required: no
 #%end
@@ -250,6 +250,13 @@
 #%end
 
 #%option G_OPT_F_OUTPUT
+#% key: classif_file
+#% label: Save classification report to csv
+#% required: no
+#% guisection: Cross validation
+#%end
+
+#%option G_OPT_F_OUTPUT
 #% key: fimp_file
 #% label: Save feature importances to csv
 #% required: no
@@ -330,9 +337,8 @@ if path is None:
     gs.fatal('Not able to find the r.learn library directory')
 sys.path.append(path)
 
-from utils import (
-    model_classifiers, load_training_data, save_training_data, option_to_list,
-    scoring_metrics)
+from utils import (model_classifiers, load_training_data, save_training_data,
+                   option_to_list, scoring_metrics)
 from raster import RasterStack
 
 
@@ -340,8 +346,8 @@ tmp_rast = []
 
 def cleanup():
     for rast in tmp_rast:
-        gs.run_command(
-            "g.remove", name=rast, type='raster', flags='f', quiet=True)
+        gs.run_command("g.remove", name=rast, type='raster', flags='f',
+                       quiet=True)
 
 def warn(*args, **kwargs):
     pass
@@ -401,6 +407,7 @@ def main():
     tune_only = flags['t']
     importances = flags['f']
     preds_file = options['preds_file']
+    classif_file = options['classif_file']
     fimp_file = options['fimp_file']
     param_file = options['param_file']
 
@@ -431,12 +438,10 @@ def main():
         if ',' in val:
             
             # add all vals to param_grid
-            param_grid[key] = [hyperparams_type[key](i)
-                for i in val.split(',')]
+            param_grid[key] = [hyperparams_type[key](i) for i in val.split(',')]
             
             # use first param for default
-            hyperparams[key] = [hyperparams_type[key](i)
-                for i in val.split(',')][0]
+            hyperparams[key] = [hyperparams_type[key](i) for i in val.split(',')][0]
         
         # else convert the single strings to int or float
         else:
@@ -472,6 +477,12 @@ def main():
         grid_search == 'cross-validation'):
         gs.fatal(
             'Hyperparameter search using cross validation requires cv > 1')
+    
+    if model_name == 'HistGradientBoostingClassifier' and balance is True:
+        gs.warning('HistGradientBoostingClassifier does not accept class',
+                   'weights. Use GradientBoostingClassifier if you want to',
+                   'rebalance your classes using class weights')
+        balance = False
 
     # -------------------------------------------------------------------------
     # Define RasterStack
@@ -509,6 +520,12 @@ def main():
                 
         y = y.flatten()  # reshape to 1 dimension
         cat = cat.flatten()
+        
+        # check if y requires label encoding
+        if y.dtype in [np.object_, np.object]:
+            from sklearn.preprocessing import LabelEncoder
+            le = LabelEncoder()
+            y = le.fit_transform(y)
 
         # take group id from last column and remove from predictors
         if group_raster != '':
@@ -612,7 +629,9 @@ def main():
         trans = ColumnTransformer(
             remainder='passthrough',
             transformers=[
-                ('scaling', scaler, range(stack.count))])
+                ('scaling', scaler, np.arange(0, stack.count))
+                ]
+            )
     
     # one-hot encoding only
     if norm_data is False and category_maps is not None:
@@ -638,19 +657,15 @@ def main():
             )
 
     # combine transformers
-    if norm_data is True or category_maps is not None:       
-        estimator = Pipeline([('preprocessing', trans),
-                              ('estimator', estimator)])
+    if norm_data is True or category_maps is not None:    
+        estimator = Pipeline(
+            [('preprocessing', trans),
+             ('estimator', estimator)])
         
-    # -------------------------------------------------------------------------
-    # Create the hyperparameter grid search method
-    # -------------------------------------------------------------------------
-
     # check if dict contains and keys - perform GridSearchCV
     if any(param_grid) is True:
-
-        # if Pipeline then change param_grid keys to named_step
         
+        # if Pipeline then change param_grid keys to named_step
         if isinstance(estimator, Pipeline):
             translate = {}
             
@@ -661,7 +676,6 @@ def main():
             for old, new in translate.items():
                 param_grid[new] = param_grid.pop(old)
             
-        # create grid search method
         estimator = GridSearchCV(
             estimator=estimator, param_grid=param_grid,
             scoring=search_scorer, n_jobs=n_jobs, cv=inner)
@@ -676,17 +690,22 @@ def main():
     # fitting ensuring that all options are passed
     if (model_name in ('GradientBoostingClassifier', 'GausianNB')
         and balance is True):
+        
         if isinstance(estimator, Pipeline):
             fit_params = {'estimator__sample_weight': class_weights}
         else:
             fit_params = {'sample_weight': class_weights}
+        
     else:
         fit_params = {}
-
+        
     try:
         estimator.fit(X, y, groups=group_id, **fit_params)
     except:
-        estimator.fit(X, y, **fit_params)
+        if model_name != 'HistGradientBoostingClassifier':
+            estimator.fit(X, y, **fit_params)
+        else:
+            estimator.fit(X, y)
     
     # message best hyperparameter setup and optionally save using pandas
     if any(param_grid) is True:
@@ -703,7 +722,6 @@ def main():
     # ---------------------------------------------------------------------
     
     if cv > 1 and tune_only is not True:
-        from model_selection import cross_val
         from sklearn.metrics import classification_report
         from sklearn import metrics
         
@@ -720,8 +738,22 @@ def main():
             all([0, 1] == np.unique(y))):    
             scoring['roc_auc'] = metrics.roc_auc_score    
         
-        preds = cross_val(estimator=estimator, X=X, y=y, idx=cat, cv=outer,
-                          n_jobs=n_jobs, fit_params=fit_params)
+        from sklearn.model_selection import cross_val_predict
+        preds = cross_val_predict(estimator, X, y, group_id, cv=outer,
+                                  n_jobs=n_jobs, fit_params=fit_params)
+        
+        test_idx = [test for train, test in outer.split(X, y)]        
+        n_fold = np.zeros((0, ))
+        
+        for fold in range(outer.get_n_splits()):
+            n_fold = np.hstack((n_fold, np.repeat(fold, test_idx[fold].shape[0])))
+        
+        preds = {
+            'y_pred': preds,
+            'y_true': y,
+            'cat': cat,
+            'fold': n_fold
+        }
         
         preds = pd.DataFrame(data=preds, 
                              columns=['y_pred', 'y_true', 'cat', 'fold'])        
@@ -748,12 +780,25 @@ def main():
         if mode == 'classification':    
             gs.message(os.linesep)
             gs.message('Cross validation class performance measures......:')
-            gs.message(
-                classification_report(
-                    y_true=preds['y_true'], 
-                    y_pred=preds['y_pred'], 
-                    sample_weight=class_weights))
-
+            
+            report_str = classification_report(
+                y_true=preds['y_true'], 
+                y_pred=preds['y_pred'], 
+                sample_weight=class_weights,
+                output_dict=False)
+            
+            report = classification_report(
+                y_true=preds['y_true'], 
+                y_pred=preds['y_pred'], 
+                sample_weight=class_weights,
+                output_dict=True)
+            report = pd.DataFrame(report)
+            
+            gs.message(report_str)
+            
+            if classif_file != '':
+                report.to_csv(classif_file, mode='w', index=True)
+                
         # write cross-validation predictions to csv file
         if preds_file != '':
             preds.to_csv(preds_file, mode='w', index=False)
@@ -765,23 +810,38 @@ def main():
     # ---------------------------------------------------------------------
     # ---------------------------------------------------------------------
     if importances is True:
+        # simple model with feature importances
         try:
             fimp = estimator.feature_importances_
         except AttributeError:
             pass
+
+        # model with gridsearch and feature importances
         try:
             fimp = estimator.best_estimator_.feature_importances_
+        except AttributeError:
+            pass
+
+        # model with transformers and feature importances
+        try:
+            fimp = estimator.named_steps['estimator'].feature_importances_
+        except AttributeError:
+            pass
+
+        # model with gridsearch-transformers-feature importances
+        try:
+            fimp = estimator.best_estimator_.named_steps['estimator'].feature_importances_
         except AttributeError:
             pass
         
         try:
             fimp = pd.DataFrame({'Feature': maplist, 'Importances': fimp})
-            
+
             gs.message(os.linesep)
             gs.message('Feature importances')
             gs.message('Feature' + '\t' + 'Score')
             
-            for index, row in fimp.iterrows():    
+            for index, row in fimp.iterrows():
                 gs.message(row['Feature'] + '\t' + str(row['Importances']))
 
             if fimp_file != '':
