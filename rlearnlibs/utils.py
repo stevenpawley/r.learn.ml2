@@ -76,11 +76,10 @@ def model_classifiers(estimator, random_state, n_jobs, p, weights=None):
     from sklearn.discriminant_analysis import QuadraticDiscriminantAnalysis
     from sklearn.naive_bayes import GaussianNB
     from sklearn.tree import DecisionTreeClassifier, DecisionTreeRegressor
-    from sklearn.ensemble import (
-        RandomForestClassifier, RandomForestRegressor, ExtraTreesClassifier,
-        ExtraTreesRegressor)
-    from sklearn.ensemble import (
-            GradientBoostingClassifier, GradientBoostingRegressor)
+    from sklearn.ensemble import (RandomForestClassifier, RandomForestRegressor,
+                                  ExtraTreesClassifier, ExtraTreesRegressor)
+    from sklearn.ensemble import (GradientBoostingClassifier,
+                                  GradientBoostingRegressor)
     from sklearn.svm import SVC, SVR
     from sklearn.neighbors import KNeighborsClassifier, KNeighborsRegressor
 
@@ -101,7 +100,8 @@ def model_classifiers(estimator, random_state, n_jobs, p, weights=None):
                                class_weight=weights,
                                solver='liblinear',
                                random_state=random_state,
-                               n_jobs=n_jobs,
+                               multi_class='auto',
+                               n_jobs=1,
                                fit_intercept=True),
         'LinearRegression':
             LinearRegression(n_jobs=n_jobs,

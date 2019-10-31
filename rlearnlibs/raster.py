@@ -7,7 +7,6 @@ from subprocess import PIPE
 import grass.script as gs
 import numpy as np
 import pandas as pd
-import sqlite3
 from grass.pygrass.gis.region import Region
 from grass.pygrass.modules.shortcuts import imagery as im
 from grass.pygrass.modules.shortcuts import raster as r
@@ -576,8 +575,10 @@ class RasterStack(object):
                     n_windows = len(
                         [i for i in self.row_windows(height=height)])
                 
-                    data_gen = ((wi, self.read(window=window)) 
-                        for wi, window in enumerate(self.row_windows(height=height)))
+                    data_gen = (
+                        (wi, self.read(window=window))
+                        for wi, window in enumerate(
+                        self.row_windows(height=height)))
             
                     for wi, arr in data_gen:
                         gs.percent(wi, n_windows, 1)
@@ -759,132 +760,6 @@ class RasterStack(object):
                     
         return X, y, cat
 
-#    def extract_points(self, vect_name, fields, na_rm=True, as_df=False):
-#        """
-#        Samples a list of GDAL rasters using a point data set
-#        Parameters
-#        ----------
-#        vect_name : str
-#            Name of GRASS GIS vector containing point features
-#            
-#        fields : list, str
-#            Name of attribute(s) containing the response variable(s)
-#            
-#        na_rm : bool, optional, default = True
-#            Remove samples containing NaNs
-#        
-#        as_df : bool, optional, default = False
-#            Extract data to pandas dataframe
-#        Returns
-#        -------
-#        X : 2d array-like
-#            Extracted raster values. Array order is (n_samples, n_features)
-#            
-#        y :  1d array-like
-#            Numpy array of labels
-#        
-#        coordinates : 2d array-like
-#            2d array of x, y coordiantes of samples
-#        
-#        df : pandas.DataFrame
-#            Extracted raster values as pandas dataframe if as_df = True
-#        Notes
-#        -----
-#        Values of the RasterStack object are read for the full extent of the
-#        supplied vector feature, i.e. current region settings are ignored.
-#        If you want to extract raster data for a spatial subset of the supplied
-#        point features, then clip the vector features beforehand.
-#        """
-#        
-#        if isinstance(fields, str):
-#            fields = [fields]
-#        
-#        # collapse list of fields to comma separated string
-#        if len(fields) > 1:
-#            field_names = ','.join(fields)
-#        else:
-#            field_names = ''.join(fields)
-#    
-#        # open grass vector
-#        points = VectorTopo(vect_name.split('@')[0])
-#        points.open('r')
-#
-#        # create link to attribute table
-#        points.dblinks.by_name(name=vect_name)
-#
-#        # extract table field to numpy array
-#        table = points.table
-##        cur = table.execute(
-##            "SELECT {fields} FROM {name}".format(fields=fields, name=table.name))
-##        y = np.array([np.isnan if c is None else c[0] for c in cur])
-##        y = np.array(y, dtype='float')
-#        
-#        sqlpath = gs.read_command("db.databases", driver="sqlite").strip(os.linesep)
-#        con = sqlite3.connect(sqlpath)
-#        df = pd.read_sql_query(
-#                "SELECT {fields} FROM {name}".format(
-#                        fields=field_names, name=table.name), con)
-#        y = df[fields].values
-#        df = None
-#        con.close()
-#
-#        # extract raster data
-#        X = np.zeros(
-#            (points.num_primitives()['point'], self.count),
-#            dtype=float)
-#        
-#        for i, src in enumerate(self.iloc):
-#            try:
-#                src.open()
-#                values = np.asarray(
-#                    get_raster_for_points(points, src))
-#                X[:, i] = values[:, 3]
-#            except:
-#                gs.fatal("Problem reading raster " + src.fullname())
-#            finally:
-#                src.close()
-#
-#        points.close()
-#
-#        # get coordinate and id values
-#        coordinates = values[:, 1:3]
-#        ids = values[:, 0]
-#
-#        # set any grass integer nodata values to NaN
-#        X[X == self._cell_nodata] = np.nan
-#
-#        # remove rows with missing response data
-#        if len(y.shape) > 1:
-#            na_rows = np.isnan(y).any(axis=1)
-#        else:
-#            na_rows = np.isnan(y)
-#        
-#        X = X[~na_rows]
-#        coordinates = coordinates[~na_rows]
-#        y = y[~na_rows]
-#        ids = ids[~na_rows]
-#
-#        # int type if classes represented integers
-#        if (y % 1).all() == 0:
-#            y = y.astype('int')
-#
-#        # remove samples containing NaNs
-#        if na_rm is True:
-#            if np.isnan(X).any() == True:
-#                gs.message('Removing samples with NaN values in the ' +
-#                           'raster feature variables...')
-#
-#            y = y[~np.isnan(X).any(axis=1)]
-#            coordinates = coordinates[~np.isnan(X).any(axis=1)]
-#            X = X[~np.isnan(X).any(axis=1)]
-#        
-#        if as_df is True:
-#            df = pd.DataFrame(data=np.column_stack((ids, coordinates, y, X)),
-#                              columns = ['id', 'x', 'y'] + fields + self.names)
-#            return df
-#
-#        return(X, y, coordinates)
-
     def extract_points(self, vect_name, fields, na_rm=True, as_df=False):
         """Samples a list of GDAL rasters using a point data set.
 
@@ -929,7 +804,8 @@ class RasterStack(object):
             df = pd.DataFrame(points.table_to_dict()).transpose()
             df_cols = points.table.columns
             df_cols = [name for (name, dtype) in df_cols.items()]
-            df = df.rename(columns={old:new for old, new in zip(df.columns, df_cols)})
+            df = df.rename(
+                columns={old: new for old, new in zip(df.columns, df_cols)})
             df = df.loc[:, fields + [points.table.key]]
             
             Xs = []

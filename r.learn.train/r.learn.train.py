@@ -199,7 +199,7 @@
 #% label: Resampling method to use for hyperparameter optimization
 #% description: Resampling method to use for hyperparameter optimization
 #% options: cross-validation,holdout
-#% answer: cross-validation
+#% answer: holdout
 #% multiple: no
 #% guisection: Estimator settings
 #%end
@@ -325,10 +325,10 @@ import atexit
 import os
 import sys
 import warnings
-import numpy as np
 from copy import deepcopy
 
 import grass.script as gs
+import numpy as np
 from grass.script.utils import get_lib_path
 
 path = get_lib_path(modname='r.learn.ml')
@@ -349,10 +349,25 @@ def cleanup():
         gs.run_command("g.remove", name=rast, type='raster', flags='f',
                        quiet=True)
 
+
 def warn(*args, **kwargs):
     pass
 
+
 warnings.warn = warn
+
+
+def wrap_named_step(param_grid):
+    translate = {}
+    
+    for k, v in param_grid.items():
+        newkey = 'estimator__' + k
+        translate[k] = newkey
+    
+    for old, new in translate.items():
+        param_grid[new] = param_grid.pop(old)
+    
+    return param_grid
 
 
 def main():
@@ -365,25 +380,19 @@ def main():
     except ImportError:
         gs.fatal("Scikit learn 0.20 or newer is not installed")
 
-
     try:
         import pandas as pd
         
     except ImportError:
         gs.fatal("Pandas is not installed ")
 
-    # -------------------------------------------------------------------------
-    # Parser options
-    # -------------------------------------------------------------------------
-
-    # required gui section
+    # parser options
     group = options['group']
     training_map = options['training_map']
     training_points = options['training_points']
     field = options['field']
     model_save = options['save_model']
 
-    # estimator gui section
     model_name = options['model_name']
     grid_search = options['grid_search']
     hyperparams = {
@@ -401,7 +410,6 @@ def main():
         'weights': options['weights']
         }
 
-    # cross validation
     cv = int(options['cv'])
     group_raster = options['group_raster']
     tune_only = flags['t']
@@ -411,7 +419,6 @@ def main():
     fimp_file = options['fimp_file']
     param_file = options['param_file']
 
-    # general options
     norm_data = flags['s']
     category_maps = option_to_list(options['category_maps'])
     random_state = int(options['random_state'])
@@ -420,10 +427,7 @@ def main():
     n_jobs = int(options['n_jobs'])
     balance = flags['b']
 
-    # -------------------------------------------------------------------------
-    # Make dicts for hyperparameters, datatypes and parameters for tuning
-    # -------------------------------------------------------------------------
-
+    # make dicts for hyperparameters, datatypes and parameters for tuning
     hyperparams_type = dict.fromkeys(hyperparams, int)
     hyperparams_type['C'] = float
     hyperparams_type['epsilon'] = float
@@ -434,16 +438,12 @@ def main():
     param_grid = dict.fromkeys(param_grid, None)
 
     for key, val in hyperparams.items():
-        # split any comma separated strings and add them to the param_grid
         if ',' in val:
+            param_grid[key] =  \
+                [hyperparams_type[key](i) for i in val.split(',')]
             
-            # add all vals to param_grid
-            param_grid[key] = [hyperparams_type[key](i) for i in val.split(',')]
-            
-            # use first param for default
-            hyperparams[key] = [hyperparams_type[key](i) for i in val.split(',')][0]
-        
-        # else convert the single strings to int or float
+            hyperparams[key] = \
+                [hyperparams_type[key](i) for i in val.split(',')][0]
         else:
             hyperparams[key] = hyperparams_type[key](val)
 
@@ -451,7 +451,6 @@ def main():
     if hyperparams['max_features'] == 0: hyperparams['max_features'] = 'auto'
     param_grid = {k: v for k, v in param_grid.items() if v is not None}
 
-    # retrieve sklearn estimator object and parameters
     estimator, mode = model_classifiers(
         model_name, random_state, n_jobs, hyperparams, balance)
 
@@ -461,20 +460,13 @@ def main():
         key: value for key, value in param_grid.items()
         if key in estimator_params
         }
-    
     scoring, search_scorer = scoring_metrics(mode)
 
-    # -------------------------------------------------------------------------
-    # Error checking of input options
-    # -------------------------------------------------------------------------
-
-    # check for field attribute if training_points are used
+    # checks of input options
     if training_points != '' and field == '':
         gs.fatal('No attribute column specified for training points')
 
-    # check that cv > 1 if hyperparameter tuning is selected
-    if (any(param_grid) is True and cv == 1 and
-        grid_search == 'cross-validation'):
+    if (any(param_grid) is True and cv == 1 and grid_search == 'cross-validation'):
         gs.fatal(
             'Hyperparameter search using cross validation requires cv > 1')
     
@@ -484,35 +476,24 @@ def main():
                    'rebalance your classes using class weights')
         balance = False
 
-    # -------------------------------------------------------------------------
-    # Define RasterStack
-    # -------------------------------------------------------------------------
-
-    # fetch individual raster names from group
+    # define RasterStack
     maplist = (gs.read_command("i.group", group=group, flags="g").
                split(os.linesep)[:-1])
     
-    # create RasterStack
     stack = RasterStack(rasters=maplist)
     
     if category_maps is not None:
         stack.categorical = category_maps
 
-    # -------------------------------------------------------------------------
-    # Extract training data
-    # -------------------------------------------------------------------------
-
-    # Sample training data and group id
+    # extract training data
     if load_training != '':
         X, y, cat, group_id = load_training_data(load_training)
     else:
         gs.message('Extracting training data')
 
-        # append spatial clumps or group raster to the predictors
         if group_raster != '':
             stack.append(group_raster)
             
-        # extract training data
         if training_map != '':
             X, y, cat = stack.extract_pixels(training_map)
         elif training_points != '':
@@ -521,7 +502,7 @@ def main():
         y = y.flatten()  # reshape to 1 dimension
         cat = cat.flatten()
         
-        # check if y requires label encoding
+        # label encoding
         if y.dtype in [np.object_, np.object]:
             from sklearn.preprocessing import LabelEncoder
             le = LabelEncoder()
@@ -540,85 +521,81 @@ def main():
             gs.fatal('No training pixels or pixels in imagery group '
                      '...check computational region')
 
-        # shuffle data
         from sklearn.utils import shuffle
         
         if group_id is None:
             X, y, cat = shuffle(X, y, cat, random_state=random_state)
         else:
-            X, y, cat, group_id = shuffle(
-                X, y, cat, group_id, random_state=random_state)
+            X, y, cat, group_id = shuffle(X, y, cat, group_id,
+                                          random_state=random_state)
 
-        # optionally save extracted data to .csv file
         if save_training != '':
             save_training_data(X, y, cat, group_id, save_training)
 
-    # -------------------------------------------------------------------------
-    # Define the inner search resampling method
-    # -------------------------------------------------------------------------
-
+    # define the inner search resampling method
     from sklearn.model_selection import (
         GridSearchCV, StratifiedKFold, GroupKFold, KFold, ShuffleSplit,
         GroupShuffleSplit)
 
-    # define inner resampling using cross-validation method
     if any(param_grid) is True and grid_search == 'cross-validation':
-        
         if group_id is None and mode == 'classification':
             inner = StratifiedKFold(n_splits=cv, random_state=random_state)
-        
         elif group_id is None and mode == 'regression':
             inner = KFold(n_splits=cv, random_state=random_state)
-        
         else:
             inner = GroupKFold(n_splits=cv)
 
-    # define inner resampling using the holdout method
     elif any(param_grid) is True and grid_search == 'holdout':
-        
         if group_id is None:
             inner = ShuffleSplit(
                 n_splits=1, test_size=0.33, random_state=random_state)
-        
         else:
             inner = GroupShuffleSplit(
                 n_splits=1, test_size=0.33, random_state=random_state)
     else:
         inner = None
 
-    # -------------------------------------------------------------------------
-    # Define the outer search resampling method
-    # -------------------------------------------------------------------------
+    # define the outer search resampling method
     if cv > 1:
-        
         if group_id is None and mode == 'classification':
             outer = StratifiedKFold(n_splits=cv, random_state=random_state)
-            
         elif group_id is None and mode == 'regression':
             outer = KFold(n_splits=cv, random_state=random_state)
-            
         else:
             outer = GroupKFold(n_splits=cv)
-
-    # -------------------------------------------------------------------------
-    # Define sample weights for estimators that require weights in fit method
-    # -------------------------------------------------------------------------
 
     # estimators that take sample_weights
     if balance is True and mode == 'classification' and model_name in (
             'GradientBoostingClassifier', 'GaussianNB'):
-        
         from sklearn.utils import compute_class_weight
+
         class_weights = compute_class_weight(
             class_weight='balanced', classes=(y), y=y)
-        
+        fit_params = {'sample_weight': class_weights}
     else:
         class_weights = None
+        fit_params = {}
 
-    # -------------------------------------------------------------------------
-    # Define the preprocessing pipeline
-    # -------------------------------------------------------------------------
-    
+    # wrapped permutation importance estimator
+    if importances is True:
+        try:
+            from eli5.sklearn import PermutationImportance
+            
+            estimator = PermutationImportance(
+                estimator=estimator,
+                scoring=search_scorer,
+                n_iter=5,
+                random_state=random_state,
+                cv=3)
+            
+            param_grid = wrap_named_step(param_grid)
+            fit_params = wrap_named_step(fit_params)
+                        
+        except ImportError:
+            gs.warning('Permutation feature importances require the ELI5',
+                       'python package to be installed')
+
+    # define the preprocessing pipeline
     from sklearn.pipeline import Pipeline
     from sklearn.compose import ColumnTransformer
     from sklearn.preprocessing import StandardScaler, OneHotEncoder
@@ -648,12 +625,10 @@ def main():
         
         trans = ColumnTransformer(
             remainder='passthrough',
-            transformers=[
-                ('onehot', enc, stack.categorical)
-                ('scaling', scaler,  np.setxor1d(
-                        range(stack.count),
-                        stack.categorical).astype('int'))
-                ]
+            transformers=[('onehot', enc, stack.categorical)
+                          ('scaling', scaler,  np.setxor1d(
+                              np.arange(0, stack.count),
+                              stack.categorical).astype('int'))]
             )
 
     # combine transformers
@@ -662,42 +637,17 @@ def main():
             [('preprocessing', trans),
              ('estimator', estimator)])
         
-    # check if dict contains and keys - perform GridSearchCV
+        param_grid = wrap_named_step(param_grid)
+        fit_params = wrap_named_step(fit_params)
+    
     if any(param_grid) is True:
-        
-        # if Pipeline then change param_grid keys to named_step
-        if isinstance(estimator, Pipeline):
-            translate = {}
-            
-            for k, v in param_grid.items():
-                newkey = 'estimator__' + k
-                translate[k] = newkey
-            
-            for old, new in translate.items():
-                param_grid[new] = param_grid.pop(old)
-            
         estimator = GridSearchCV(
             estimator=estimator, param_grid=param_grid,
             scoring=search_scorer, n_jobs=n_jobs, cv=inner)
 
-    # -------------------------------------------------------------------------
-    # Estimator training
-    # -------------------------------------------------------------------------
-
+    # estimator training
     gs.message(os.linesep)
     gs.message(('Fitting model using ' + model_name))
-
-    # fitting ensuring that all options are passed
-    if (model_name in ('GradientBoostingClassifier', 'GausianNB')
-        and balance is True):
-        
-        if isinstance(estimator, Pipeline):
-            fit_params = {'estimator__sample_weight': class_weights}
-        else:
-            fit_params = {'sample_weight': class_weights}
-        
-    else:
-        fit_params = {}
         
     try:
         estimator.fit(X, y, groups=group_id, **fit_params)
@@ -717,10 +667,7 @@ def main():
             param_df = pd.DataFrame(estimator.cv_results_)
             param_df.to_csv(param_file)
 
-    # ---------------------------------------------------------------------
-    # Cross-validation
-    # ---------------------------------------------------------------------
-    
+    # cross-validation
     if cv > 1 and tune_only is not True:
         from sklearn.metrics import classification_report
         from sklearn import metrics
@@ -746,7 +693,8 @@ def main():
         n_fold = np.zeros((0, ))
         
         for fold in range(outer.get_n_splits()):
-            n_fold = np.hstack((n_fold, np.repeat(fold, test_idx[fold].shape[0])))
+            n_fold = np.hstack(
+                (n_fold, np.repeat(fold, test_idx[fold].shape[0])))
         
         preds = {
             'y_pred': preds,
@@ -806,9 +754,6 @@ def main():
             text_file.write('"Real", "Real", "integer", "integer"')
             text_file.close()
 
-
-    # ---------------------------------------------------------------------
-    # ---------------------------------------------------------------------
     if importances is True:
         # simple model with feature importances
         try:
@@ -830,7 +775,10 @@ def main():
 
         # model with gridsearch-transformers-feature importances
         try:
-            fimp = estimator.best_estimator_.named_steps['estimator'].feature_importances_
+            fimp = (estimator.
+                    best_estimator_.
+                    named_steps['estimator'].
+                    feature_importances_)
         except AttributeError:
             pass
         
@@ -850,7 +798,7 @@ def main():
             gs.warning('Feature importances not available for the '
                        'selected estimator model')
 
-    # Save the fitted model
+    # save the fitted model
     import joblib
     joblib.dump((estimator, y), model_save)
 
