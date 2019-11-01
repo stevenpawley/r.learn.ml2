@@ -165,16 +165,6 @@
 #%end
 
 #%option
-#% key: max_degree
-#% type: integer
-#% label: The maximum degree of terms in forward pass
-#% description: The maximum degree of terms in forward pass for Py-earth
-#% answer: 1
-#% multiple: yes
-#% guisection: Estimator settings
-#%end
-
-#%option
 #% key: n_neighbors
 #% type: integer
 #% label: Number of neighbors to use
@@ -405,7 +395,6 @@ def main():
         'subsample': options['subsample'],
         'max_depth': options['max_depth'],
         'max_features': options['max_features'],
-        'max_degree': options['max_degree'],
         'n_neighbors': options['n_neighbors'],
         'weights': options['weights']
         }
@@ -611,7 +600,7 @@ def main():
             )
     
     # one-hot encoding only
-    if norm_data is False and category_maps is not None:
+    elif norm_data is False and category_maps is not None:
         enc = OneHotEncoder(handle_unknown='ignore', sparse=False)
         
         trans = ColumnTransformer(
@@ -619,16 +608,20 @@ def main():
             transformers=[('onehot', enc, stack.categorical)])
         
     # standardization and one-hot encoding
-    if norm_data is True and category_maps is not None:
+    elif norm_data is True and category_maps is not None:
         scaler = StandardScaler()
         enc = OneHotEncoder(handle_unknown='ignore', sparse=False)
-        
+
+        numeric_idx = np.setxor1d(
+            ar1=np.arange(0, stack.count),
+            ar2=stack.categorical)
+                
         trans = ColumnTransformer(
             remainder='passthrough',
-            transformers=[('onehot', enc, stack.categorical)
-                          ('scaling', scaler,  np.setxor1d(
-                              np.arange(0, stack.count),
-                              stack.categorical).astype('int'))]
+            transformers=[
+                ('onehot', enc, stack.categorical),
+                ('scaling', scaler, numeric_idx)
+                ]
             )
 
     # combine transformers
