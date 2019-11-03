@@ -191,7 +191,7 @@
 #% options: cross-validation,holdout
 #% answer: holdout
 #% multiple: no
-#% guisection: Estimator settings
+#% guisection: Tuning
 #%end
 
 #%option G_OPT_R_INPUT
@@ -208,7 +208,7 @@
 #% label: Custom group ids for training samples from GRASS raster
 #% description: GRASS raster containing group ids for training samples. Samples with the same group id will not be split between training and test cross-validation folds
 #% required: no
-#% guisection: Cross validation
+#% guisection: Optional
 #%end
 
 #%option
@@ -216,48 +216,45 @@
 #% type: integer
 #% description: Number of cross-validation folds
 #% answer: 1
-#% guisection: Cross validation
-#%end
-
-#%flag
-#% key: t
-#% description: Perform hyperparameter tuning only
-#% guisection: Cross validation
+#% guisection: Tuning
 #%end
 
 #%flag
 #% key: f
-#% label: Display Feature importances
+#% label: Compute permutation feature importances
 #% description: Display feature importances if supported by selected estimator model
-#% guisection: Estimator settings
+#% guisection: Tuning
 #%end
 
-#%option G_OPT_F_OUTPUT
-#% key: preds_file
-#% label: Save cross-validation predictions to csv
-#% required: no
-#% guisection: Cross validation
+#%flag
+#% key: k
+#% label: Perform permutation score based feature selection
+#% description: Perform feature selection using the n-best features selected from the permutation scores
+#% guisection: Tuning
 #%end
 
-#%option G_OPT_F_OUTPUT
-#% key: classif_file
-#% label: Save classification report to csv
-#% required: no
-#% guisection: Cross validation
+#%option
+#% key: threshold
+#% type: double
+#% label: The percentile of top features to retain
+#% description: The percentile of top features to retain when using permutation-based feature selection
+#% answer: 0.9
+#% multiple: yes
+#% guisection: Tuning
 #%end
 
 #%option G_OPT_F_OUTPUT
 #% key: fimp_file
 #% label: Save feature importances to csv
 #% required: no
-#% guisection: Cross validation
+#% guisection: Tuning
 #%end
 
 #%option G_OPT_F_OUTPUT
 #% key: param_file
 #% label: Save hyperparameter search scores to csv
 #% required: no
-#% guisection: Cross validation
+#% guisection: Tuning
 #%end
 
 #%option
@@ -401,10 +398,7 @@ def main():
 
     cv = int(options['cv'])
     group_raster = options['group_raster']
-    tune_only = flags['t']
     importances = flags['f']
-    preds_file = options['preds_file']
-    classif_file = options['classif_file']
     fimp_file = options['fimp_file']
     param_file = options['param_file']
 
@@ -415,6 +409,9 @@ def main():
     save_training = options['save_training']
     n_jobs = int(options['n_jobs'])
     balance = flags['b']
+
+    fs = flags['k']
+    threshold = options['threshold']
 
     # make dicts for hyperparameters, datatypes and parameters for tuning
     hyperparams_type = dict.fromkeys(hyperparams, int)
@@ -450,6 +447,17 @@ def main():
         if key in estimator_params
         }
     scoring, search_scorer = scoring_metrics(mode)
+
+    # feature selection params
+    if fs is True:
+        if ',' in threshold:
+            param_grid['threshold'] =  \
+                [hyperparams_type['threshold'](i) for i in threshold.split(',')]
+                
+            hyperparams['threshold'] = \
+                [hyperparams_type['threshold'](i) for i in threshold.split(',')][0]
+        else:
+            hyperparams['threshold'] = hyperparams_type['threshold'](threshold)
 
     # checks of input options
     if training_points != '' and field == '':
@@ -544,15 +552,6 @@ def main():
     else:
         inner = None
 
-    # define the outer search resampling method
-    if cv > 1:
-        if group_id is None and mode == 'classification':
-            outer = StratifiedKFold(n_splits=cv, random_state=random_state)
-        elif group_id is None and mode == 'regression':
-            outer = KFold(n_splits=cv, random_state=random_state)
-        else:
-            outer = GroupKFold(n_splits=cv)
-
     # estimators that take sample_weights
     if balance is True and mode == 'classification' and model_name in (
             'GradientBoostingClassifier', 'GaussianNB'):
@@ -583,6 +582,15 @@ def main():
         except ImportError:
             gs.warning('Permutation feature importances require the ELI5',
                        'python package to be installed')
+    
+    # feature selection wrapper
+    if fs is True:
+        from sklearn.feature_selection import SelectFromModel
+
+        estimator = SelectFromModel(
+            estimator=estimator,
+            threshold='mean*'+str(hyperparams['threshold'])
+        )
 
     # define the preprocessing pipeline
     from sklearn.pipeline import Pipeline
@@ -632,7 +640,7 @@ def main():
         
         param_grid = wrap_named_step(param_grid)
         fit_params = wrap_named_step(fit_params)
-    
+        
     if any(param_grid) is True:
         estimator = GridSearchCV(
             estimator=estimator, param_grid=param_grid,
@@ -659,93 +667,6 @@ def main():
         if param_file != '':
             param_df = pd.DataFrame(estimator.cv_results_)
             param_df.to_csv(param_file)
-
-    # cross-validation
-    if cv > 1 and tune_only is not True:
-        from sklearn.metrics import classification_report
-        from sklearn import metrics
-        
-        if (mode == 'classification' and 
-            cv > np.histogram(y, bins=np.unique(y))[0].min()):
-            gs.message(os.linesep)
-            gs.fatal('Number of cv folds is greater than number of '
-                     'samples in some classes')
-            
-        gs.message(os.linesep)
-        gs.message("Cross validation global performance measures......:")
-
-        if (mode == 'classification' and len(np.unique(y)) == 2 and
-            all([0, 1] == np.unique(y))):    
-            scoring['roc_auc'] = metrics.roc_auc_score    
-        
-        from sklearn.model_selection import cross_val_predict
-        preds = cross_val_predict(estimator, X, y, group_id, cv=outer,
-                                  n_jobs=n_jobs, fit_params=fit_params)
-        
-        test_idx = [test for train, test in outer.split(X, y)]        
-        n_fold = np.zeros((0, ))
-        
-        for fold in range(outer.get_n_splits()):
-            n_fold = np.hstack(
-                (n_fold, np.repeat(fold, test_idx[fold].shape[0])))
-        
-        preds = {
-            'y_pred': preds,
-            'y_true': y,
-            'cat': cat,
-            'fold': n_fold
-        }
-        
-        preds = pd.DataFrame(data=preds, 
-                             columns=['y_pred', 'y_true', 'cat', 'fold'])        
-        gs.message(os.linesep)
-        gs.message('Global cross validation scores...')
-        gs.message(os.linesep)
-        gs.message(('Metric \t Mean \t Error'))    
-
-        for name, func in scoring.items():
-            score_mean = (
-                preds.groupby('fold').
-                apply(lambda x: func(x['y_true'], x['y_pred'])).
-                mean())
-
-            score_std = (
-                preds.groupby('fold').
-                apply(lambda x: func(x['y_true'], x['y_pred'])).
-                std())
-            
-            gs.message(name + 
-                       '\t' + str(score_mean.round(3)) + 
-                       '\t' + str(score_std.round(3)))
-
-        if mode == 'classification':    
-            gs.message(os.linesep)
-            gs.message('Cross validation class performance measures......:')
-            
-            report_str = classification_report(
-                y_true=preds['y_true'], 
-                y_pred=preds['y_pred'], 
-                sample_weight=class_weights,
-                output_dict=False)
-            
-            report = classification_report(
-                y_true=preds['y_true'], 
-                y_pred=preds['y_pred'], 
-                sample_weight=class_weights,
-                output_dict=True)
-            report = pd.DataFrame(report)
-            
-            gs.message(report_str)
-            
-            if classif_file != '':
-                report.to_csv(classif_file, mode='w', index=True)
-                
-        # write cross-validation predictions to csv file
-        if preds_file != '':
-            preds.to_csv(preds_file, mode='w', index=False)
-            text_file = open(preds_file + 't', "w")
-            text_file.write('"Real", "Real", "integer", "integer"')
-            text_file.close()
 
     if importances is True:
         # simple model with feature importances
@@ -793,7 +714,8 @@ def main():
 
     # save the fitted model
     import joblib
-    joblib.dump((estimator, y), model_save)
+    joblib.dump((estimator, X, y, cat, group_id, mode, fit_params),
+                model_save)
 
 
 if __name__ == "__main__":
