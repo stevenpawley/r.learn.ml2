@@ -233,12 +233,11 @@
 #% guisection: Tuning
 #%end
 
-#%option
+#%option string
 #% key: threshold
-#% type: double
-#% label: The percentile of top features to retain
-#% description: The percentile of top features to retain when using permutation-based feature selection
-#% answer: 0.9
+#% label: The threshold value to use for feature selection
+#% description: Features whose importance is greater or equal than threshold are kept while the others are discarded
+#% answer: 1.25*mean
 #% multiple: yes
 #% guisection: Tuning
 #%end
@@ -409,7 +408,6 @@ def main():
     save_training = options['save_training']
     n_jobs = int(options['n_jobs'])
     balance = flags['b']
-
     fs = flags['k']
     threshold = options['threshold']
 
@@ -451,13 +449,10 @@ def main():
     # feature selection params
     if fs is True:
         if ',' in threshold:
-            param_grid['threshold'] =  \
-                [hyperparams_type['threshold'](i) for i in threshold.split(',')]
-                
-            hyperparams['threshold'] = \
-                [hyperparams_type['threshold'](i) for i in threshold.split(',')][0]
+            param_grid['threshold'] = threshold.split(',')                
+            hyperparams['threshold'] = threshold.split(',')[0]
         else:
-            hyperparams['threshold'] = hyperparams_type['threshold'](threshold)
+            hyperparams['threshold'] = threshold
 
     # checks of input options
     if training_points != '' and field == '':
@@ -472,6 +467,10 @@ def main():
                    'weights. Use GradientBoostingClassifier if you want to',
                    'rebalance your classes using class weights')
         balance = False
+    
+    if fs is True and importances is False:
+        gs.fatal('Feature selection requires permutation feature importances ',
+                 'to be calculated')
 
     # define RasterStack
     maplist = (gs.read_command("i.group", group=group, flags="g").
@@ -574,7 +573,8 @@ def main():
                 scoring=search_scorer,
                 n_iter=5,
                 random_state=random_state,
-                cv=3)
+                cv=3,
+                n_jobs=n_jobs)
             
             param_grid = wrap_named_step(param_grid)
             fit_params = wrap_named_step(fit_params)
@@ -586,10 +586,9 @@ def main():
     # feature selection wrapper
     if fs is True:
         from sklearn.feature_selection import SelectFromModel
-
         estimator = SelectFromModel(
             estimator=estimator,
-            threshold='mean*'+str(hyperparams['threshold'])
+            threshold=hyperparams['threshold']
         )
 
     # define the preprocessing pipeline
@@ -631,9 +630,9 @@ def main():
                 ('scaling', scaler, numeric_idx)
                 ]
             )
-
+    
     # combine transformers
-    if norm_data is True or category_maps is not None:    
+    if norm_data is True or category_maps is not None and fs is False:
         estimator = Pipeline(
             [('preprocessing', trans),
              ('estimator', estimator)])
@@ -657,7 +656,7 @@ def main():
             estimator.fit(X, y, **fit_params)
         else:
             estimator.fit(X, y)
-    
+        
     # message best hyperparameter setup and optionally save using pandas
     if any(param_grid) is True:
         gs.message(os.linesep)
@@ -670,47 +669,51 @@ def main():
 
     if importances is True:
         # simple model with feature importances
-        try:
-            fimp = estimator.feature_importances_
-        except AttributeError:
-            pass
-
-        # model with gridsearch and feature importances
-        try:
-            fimp = estimator.best_estimator_.feature_importances_
-        except AttributeError:
-            pass
-
-        # model with transformers and feature importances
-        try:
-            fimp = estimator.named_steps['estimator'].feature_importances_
-        except AttributeError:
-            pass
-
-        # model with gridsearch-transformers-feature importances
-        try:
-            fimp = (estimator.
-                    best_estimator_.
-                    named_steps['estimator'].
-                    feature_importances_)
-        except AttributeError:
-            pass
-        
-        try:
-            fimp = pd.DataFrame({'Feature': maplist, 'Importances': fimp})
-
-            gs.message(os.linesep)
-            gs.message('Feature importances')
-            gs.message('Feature' + '\t' + 'Score')
+        if norm_data is False and category_maps is None:
+            if fs is False:
+                fimp = estimator.feature_importances_
+            else:
+                fimp = estimator.estimator_.feature_importances_
             
-            for index, row in fimp.iterrows():
-                gs.message(row['Feature'] + '\t' + str(row['Importances']))
+        # model with transformers and feature importances
+        elif norm_data is True or category_maps is not None:
+            if fs is False:
+                fimp = estimator.named_steps['estimator'].feature_importances_
+            else:
+                fimp = estimator.named_steps['estimator'].estimator_.feature_importances_
+        
+        # model with gridsearch and feature importances
+        elif any(param_grid) is True:
+            if fs is False:
+                fimp = estimator.best_estimator_.feature_importances_
+            else:
+                fimp = estimator.best_estimator_.estimator_.feature_importances_
+        
+        # model with gridsearch-transformers-feature importances
+        elif any(param_grid) is True and nrom_data is True or category_maps is not None:
+            if fs is False:
+                fimp = (estimator.
+                        best_estimator_.
+                        named_steps['estimator'].
+                        feature_importances_)
+            else:
+                fimp = (estimator.
+                        best_estimator_.
+                        named_steps['estimator'].
+                        estimator_.
+                        feature_importances_)
+        
+        fimp = pd.DataFrame({'Feature': maplist, 'Importances': fimp})
 
-            if fimp_file != '':
-                fimp.to_csv(fimp_file, index=False)
-        except:
-            gs.warning('Feature importances not available for the '
-                       'selected estimator model')
+        gs.message(os.linesep)
+        gs.message('Feature importances')
+        gs.message('Feature' + '\t' + 'Score')
+        
+        for index, row in fimp.iterrows():
+            gs.message(row['Feature'] + '\t' + str(row['Importances']))
+
+        if fimp_file != '':
+            fimp.to_csv(fimp_file, index=False)
 
     # save the fitted model
     import joblib
