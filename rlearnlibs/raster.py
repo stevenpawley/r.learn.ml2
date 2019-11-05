@@ -827,12 +827,14 @@ class RasterStack(object):
                 cat = (np.asarray([int(k.split('|')[0])
                     if k.split('|')[1] != '*' else 0 for k in rast_data]))
             
-                src.open('r')
-                if src.mtype == 'CELL':
-                    X = [int(i) for i in X]
-                else:
-                    X = [float(i) for i in X]
-                src.close()
+                # src.open('r')
+                # if src.mtype == 'CELL':
+                #     X = [int(i) for i in X]
+                # else:
+                #     X = [float(i) for i in X]
+
+                X = [float(i) for i in X]
+                # src.close()
                 
                 X = pd.DataFrame(data=np.column_stack((X, cat)), 
                                  columns=[name, key_col])

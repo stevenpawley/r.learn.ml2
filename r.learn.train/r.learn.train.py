@@ -188,7 +188,7 @@
 #% key: grid_search
 #% label: Resampling method to use for hyperparameter optimization
 #% description: Resampling method to use for hyperparameter optimization
-#% options: cross-validation,holdout
+#% options: holdout,cv2,cv5,cv10
 #% answer: holdout
 #% multiple: no
 #% guisection: Tuning
@@ -211,14 +211,6 @@
 #% guisection: Optional
 #%end
 
-#%option
-#% key: cv
-#% type: integer
-#% description: Number of cross-validation folds
-#% answer: 1
-#% guisection: Tuning
-#%end
-
 #%flag
 #% key: f
 #% label: Compute permutation feature importances
@@ -233,11 +225,22 @@
 #% guisection: Tuning
 #%end
 
-#%option string
-#% key: threshold
-#% label: The threshold value to use for feature selection
-#% description: Features whose importance is greater or equal than threshold are kept while the others are discarded
-#% answer: 1.25*mean
+#%option
+#% key: n_features_to_select
+#% label: The number of top scoring features to retain during feature selection
+#% description: The number of top scoring features to retain based on ther permutation scores. The default of zero causes half the number of available features to be selected
+#% type: integer
+#% answer: 0
+#% multiple: yes
+#% guisection: Tuning
+#%end
+
+#%option
+#% key: step
+#% label: The proportion of features to remove at each iteration
+#% description: The proportion of features to remove at each iteration
+#% type: double
+#% answer: 0.2
 #% multiple: yes
 #% guisection: Tuning
 #%end
@@ -381,6 +384,14 @@ def main():
 
     model_name = options['model_name']
     grid_search = options['grid_search']
+
+    if grid_search == 'cv2':
+        cv = 2
+    elif grid_search == 'cv5':
+        cv = 5
+    elif grid_search == 'cv10':
+        cv = 10
+
     hyperparams = {
         'C': options['c'],
         'epsilon': options['epsilon'],
@@ -395,7 +406,6 @@ def main():
         'weights': options['weights']
         }
 
-    cv = int(options['cv'])
     group_raster = options['group_raster']
     importances = flags['f']
     fimp_file = options['fimp_file']
@@ -409,7 +419,8 @@ def main():
     n_jobs = int(options['n_jobs'])
     balance = flags['b']
     fs = flags['k']
-    threshold = options['threshold']
+    n_features = options['n_features']
+    step = float(options['step'])
 
     # make dicts for hyperparameters, datatypes and parameters for tuning
     hyperparams_type = dict.fromkeys(hyperparams, int)
@@ -418,6 +429,7 @@ def main():
     hyperparams_type['learning_rate'] = float
     hyperparams_type['subsample'] = float
     hyperparams_type['weights'] = str
+    hyperparams_type['n_features_to_select'] = int
     param_grid = deepcopy(hyperparams_type)
     param_grid = dict.fromkeys(param_grid, None)
 
@@ -448,19 +460,30 @@ def main():
 
     # feature selection params
     if fs is True:
-        if ',' in threshold:
-            param_grid['threshold'] = threshold.split(',')                
-            hyperparams['threshold'] = threshold.split(',')[0]
-        else:
-            hyperparams['threshold'] = threshold
+        if ',' in n_features:
+            nfeatures_list = n_features.split(',')
 
+            param_grid['n_features_to_select'] = \
+                [hyperparams_type['n_features_to_select'](i) 
+                for i in nfeatures_list]
+            
+            param_grid['n_features_to_select'] = \
+                [None for i in param_grid['n_features_to_select'] if i == 0]
+
+            hyperparams['n_features_to_select'] = \
+                [hyperparams_type['n_features_to_select'](i) 
+                for i in nfeatures_list][0]
+
+        else:
+            hyperparams['n_features_to_select'] = \
+                hyperparams_type['n_features_to_select'](n_features)
+            
+        if hyperparams['n_features_to_select'] == 0:
+            hyperparams['n_features_to_select'] = None
+        
     # checks of input options
     if training_points != '' and field == '':
         gs.fatal('No attribute column specified for training points')
-
-    if (any(param_grid) is True and cv == 1 and grid_search == 'cross-validation'):
-        gs.fatal(
-            'Hyperparameter search using cross validation requires cv > 1')
     
     if model_name == 'HistGradientBoostingClassifier' and balance is True:
         gs.warning('HistGradientBoostingClassifier does not accept class',
@@ -533,7 +556,7 @@ def main():
         GridSearchCV, StratifiedKFold, GroupKFold, KFold, ShuffleSplit,
         GroupShuffleSplit)
 
-    if any(param_grid) is True and grid_search == 'cross-validation':
+    if any(param_grid) is True and grid_search != 'holdout':
         if group_id is None and mode == 'classification':
             inner = StratifiedKFold(n_splits=cv, random_state=random_state)
         elif group_id is None and mode == 'regression':
@@ -566,17 +589,20 @@ def main():
     # wrapped permutation importance estimator
     if importances is True:
         try:
-            from eli5.sklearn import PermutationImportance
-            
+            from eli5.sklearn import PermutationImportance      
             estimator = PermutationImportance(
                 estimator=estimator,
                 scoring=search_scorer,
                 n_iter=5,
                 random_state=random_state,
-                cv=3,
-                n_jobs=n_jobs)
-            
+                cv=3)
+
+            nfeatures_grid = {
+                'n_features_to_select': param_grid.pop('n_features_to_select', None)}
             param_grid = wrap_named_step(param_grid)
+            param_grid.update(nfeatures_grid)
+            param_grid = {k:v for k,v in param_grid.items() if v is not None}
+
             fit_params = wrap_named_step(fit_params)
                         
         except ImportError:
@@ -585,10 +611,11 @@ def main():
     
     # feature selection wrapper
     if fs is True:
-        from sklearn.feature_selection import SelectFromModel
-        estimator = SelectFromModel(
+        from sklearn.feature_selection import RFE
+        estimator = RFE(
             estimator=estimator,
-            threshold=hyperparams['threshold']
+            n_features_to_select=hyperparams['n_features_to_select'],
+            step=step
         )
 
     # define the preprocessing pipeline
@@ -601,9 +628,7 @@ def main():
         scaler = StandardScaler()
         trans = ColumnTransformer(
             remainder='passthrough',
-            transformers=[
-                ('scaling', scaler, np.arange(0, stack.count))
-                ]
+            transformers=[('scaling', scaler, np.arange(0, stack.count))]
             )
     
     # one-hot encoding only
@@ -632,14 +657,14 @@ def main():
             )
     
     # combine transformers
-    if norm_data is True or category_maps is not None and fs is False:
+    if norm_data is True or category_maps is not None:
         estimator = Pipeline(
             [('preprocessing', trans),
              ('estimator', estimator)])
         
         param_grid = wrap_named_step(param_grid)
         fit_params = wrap_named_step(fit_params)
-        
+    
     if any(param_grid) is True:
         estimator = GridSearchCV(
             estimator=estimator, param_grid=param_grid,
@@ -669,41 +694,92 @@ def main():
 
     if importances is True:
         # simple model with feature importances
-        if norm_data is False and category_maps is None:
-            if fs is False:
-                fimp = estimator.feature_importances_
-            else:
-                fimp = estimator.estimator_.feature_importances_
-            
+        try:
+            fimp = estimator.feature_importances_
+        except AttributeError:
+            pass
+
         # model with transformers and feature importances
-        elif norm_data is True or category_maps is not None:
-            if fs is False:
-                fimp = estimator.named_steps['estimator'].feature_importances_
-            else:
-                fimp = estimator.named_steps['estimator'].estimator_.feature_importances_
-        
+        try:
+            fimp = estimator.named_steps['estimator'].feature_importances_
+        except AttributeError:
+            pass
+    
         # model with gridsearch and feature importances
-        elif any(param_grid) is True:
-            if fs is False:
-                fimp = estimator.best_estimator_.feature_importances_
-            else:
-                fimp = estimator.best_estimator_.estimator_.feature_importances_
-        
+        try:
+            fimp = estimator.best_estimator_.feature_importances_
+        except AttributeError:
+            pass
+
         # model with gridsearch-transformers-feature importances
-        elif any(param_grid) is True and nrom_data is True or category_maps is not None:
-            if fs is False:
-                fimp = (estimator.
-                        best_estimator_.
-                        named_steps['estimator'].
-                        feature_importances_)
-            else:
-                fimp = (estimator.
-                        best_estimator_.
-                        named_steps['estimator'].
-                        estimator_.
-                        feature_importances_)
+        try:
+            fimp = (estimator.
+                    best_estimator_.
+                    named_steps['estimator'].
+                    feature_importances_)
+        except AttributeError:
+            pass
+
+        try:
+            fimp = (estimator.
+                    named_steps['estimator'].
+                    estimator_.
+                    feature_importances_)
+        except AttributeError:
+            pass
+
+        feature_names = deepcopy(stack.names)
+        feature_names = [i.split('@')[0] for i in feature_names]
+
+        if category_maps is not None:
+            try:
+                enc = (estimator.
+                       named_steps['preprocessing'].
+                       named_transformers_['onehot']
+                      )
+            except AttributeError:
+                pass
         
-        fimp = pd.DataFrame({'Feature': maplist, 'Importances': fimp})
+            try:
+                enc = (estimator.
+                       best_estimator_.
+                       named_steps['preprocessing'].
+                       named_transformers_['onehot']
+                       )
+            except AttributeError:
+                pass
+
+            try:
+                enc = (estimator.
+                       best_estimator_.
+                       estimator_.named_steps['preprocessing'].
+                       named_transformers_['onehot'])
+            except AttributeError:
+                pass
+            
+            for idx, enc_cats in zip(stack.categorical, enc.categories_):
+                enc_feature = feature_names[idx]
+                
+                grass_cats = (
+                    gs.
+                    read_command('r.category', map=enc_feature, separator='comma').
+                    split(os.linesep)[:-1])
+                
+                try:
+                    grass_cats = [i.split(',')[1] for i in grass_cats]
+                except:
+                    pass
+
+                enc_cats = grass_cats
+                
+                enc_feature_cats = []
+                for cval in enc_cats:
+                    enc_feature_cats.append('_'.join([enc_feature, cval]))
+
+                feature_names.remove(enc_feature)
+                feature_names = feature_names + enc_feature_cats
+
+        fimp = pd.DataFrame({'Feature': feature_names, 'Importances': fimp})
 
         gs.message(os.linesep)
         gs.message('Feature importances')
