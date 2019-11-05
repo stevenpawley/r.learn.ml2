@@ -328,7 +328,8 @@ if path is None:
 sys.path.append(path)
 
 from utils import (model_classifiers, load_training_data, save_training_data,
-                   option_to_list, scoring_metrics, expand_feature_names)
+                   option_to_list, scoring_metrics, expand_feature_names,
+                   unwrap_feature_importances, unwrap_ohe)
 from raster import RasterStack
 
 
@@ -748,62 +749,12 @@ def main():
             text_file.close()
 
     if importances is True:
-        # simple model with feature importances
-        try:
-            fimp = estimator.feature_importances_
-        except AttributeError:
-            pass
-
-        # model with gridsearch and feature importances
-        try:
-            fimp = estimator.best_estimator_.feature_importances_
-        except AttributeError:
-            pass
-
-        # model with transformers and feature importances
-        try:
-            fimp = estimator.named_steps['estimator'].feature_importances_
-        except AttributeError:
-            pass
-
-        # model with gridsearch-transformers-feature importances
-        try:
-            fimp = (estimator.
-                    best_estimator_.
-                    named_steps['estimator'].
-                    feature_importances_)
-        except AttributeError:
-            pass
-        
+        fimp = unwrap_feature_importances(estimator)        
         feature_names = deepcopy(stack.names)
         feature_names = [i.split('@')[0] for i in feature_names]
 
         if category_maps is not None:
-            try:
-                enc = (estimator.
-                       named_steps['preprocessing'].
-                       named_transformers_['onehot']
-                      )
-            except AttributeError:
-                pass
-        
-            try:
-                enc = (estimator.
-                       best_estimator_.
-                       named_steps['preprocessing'].
-                       named_transformers_['onehot']
-                       )
-            except AttributeError:
-                pass
-
-            try:
-                enc = (estimator.
-                       best_estimator_.
-                       estimator_.named_steps['preprocessing'].
-                       named_transformers_['onehot'])
-            except AttributeError:
-                pass
-        
+            enc = unwrap_ohe(estimator)        
             feature_names = expand_feature_names(
                 feature_names=feature_names,
                 categorical_indices=stack.categorical,

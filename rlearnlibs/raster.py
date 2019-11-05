@@ -825,10 +825,10 @@ class RasterStack(object):
 
                 if src.mtype == 'CELL':
                     nodata = self._cell_nodata
-                    dtype = 'Int32'
+                    dtype = pd.Int64Dtype()
                 else:
                     nodata = np.nan
-                    dtype = 'float32'
+                    dtype = np.float32
 
                 X = (np.asarray([k.split('|')[1]
                     if k.split('|')[1] != '*' else nodata for k in rast_data]))
@@ -844,8 +844,9 @@ class RasterStack(object):
                 src.close()
 
                 X = pd.DataFrame(data=np.column_stack((X, cat)), 
-                                 columns=[name, key_col], 
-                                 dtype=dtype)
+                                 columns=[name, key_col])
+                X[key_col] = X[key_col].astype(pd.Int64Dtype())
+                X[name] = X[name].astype(dtype)
                 Xs.append(X)
         
         for X in Xs:

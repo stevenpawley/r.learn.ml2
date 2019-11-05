@@ -418,3 +418,72 @@ def load_training_data(file):
     X = training_data[:, 0:last_Xcol]
 
     return (X, y, cat, groups)
+
+
+def unwrap_feature_importances(estimator):
+    """
+    Simple function to unwrap feature importances from various
+    pipelines and estimators
+    """
+    # simple model with feature importances
+    try:
+        fimp = estimator.feature_importances_
+    except AttributeError:
+        pass
+
+    # model with gridsearch and feature importances
+    try:
+        fimp = estimator.best_estimator_.feature_importances_
+    except AttributeError:
+        pass
+
+    # model with transformers and feature importances
+    try:
+        fimp = estimator.named_steps['estimator'].feature_importances_
+    except AttributeError:
+        pass
+
+    # model with gridsearch-transformers-feature importances
+    try:
+        fimp = (estimator.
+                best_estimator_.
+                named_steps['estimator'].
+                feature_importances_)
+    except AttributeError:
+        pass
+
+    return fimp
+
+
+def unwrap_ohe(estimator):
+    """
+    Simple function to unwrap a OneHotEncoder from various pipelines and 
+    transformers
+    """
+    
+    try:
+        enc = (estimator.
+                named_steps['preprocessing'].
+                named_transformers_['onehot']
+                )
+    except AttributeError:
+        pass
+
+    try:
+        enc = (estimator.
+                best_estimator_.
+                named_steps['preprocessing'].
+                named_transformers_['onehot']
+                )
+    except AttributeError:
+        pass
+
+    try:
+        enc = (estimator.
+                best_estimator_.
+                estimator_.named_steps['preprocessing'].
+                named_transformers_['onehot'])
+    except AttributeError:
+        pass
+
+    return enc
