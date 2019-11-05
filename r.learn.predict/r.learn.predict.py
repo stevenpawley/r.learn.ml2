@@ -113,7 +113,7 @@ def main():
         gs.fatal('Need to set probabilities=True if prob_only=True')
 
     # reload fitted model and trainign data
-    estimator, _, y, _, _, _, _ = joblib.load(model_load)
+    estimator, y = joblib.load(model_load)
     
     # define RasterStack
     maplist = gs.read_command(

@@ -69,9 +69,39 @@
 #% label: model_name
 #% description: Supervised learning model to use
 #% answer: RandomForestClassifier
-#% options: LogisticRegression,LinearRegression,LinearDiscriminantAnalysis,QuadraticDiscriminantAnalysis,KNeighborsClassifier,KNeighborsRegressor,GaussianNB,DecisionTreeClassifier,DecisionTreeRegressor,RandomForestClassifier,RandomForestRegressor,ExtraTreesClassifier,ExtraTreesRegressor,GradientBoostingClassifier,GradientBoostingRegressor,HistGradientBoostingClassifier,HistGradientBoostingRegressor,SVC,SVR
+#% options: LogisticRegression,LinearRegression,SGDClassifier,SGDRegressor,LinearDiscriminantAnalysis,QuadraticDiscriminantAnalysis,KNeighborsClassifier,KNeighborsRegressor,GaussianNB,DecisionTreeClassifier,DecisionTreeRegressor,RandomForestClassifier,RandomForestRegressor,ExtraTreesClassifier,ExtraTreesRegressor,GradientBoostingClassifier,GradientBoostingRegressor,HistGradientBoostingClassifier,HistGradientBoostingRegressor,SVC,SVR,MLPClassifier,MLPRegressor
 #% guisection: Estimator settings
 #% required: no
+#%end
+
+#%option string
+#% key: penalty
+#% label: The penalty (aka regularization term) to be used
+#% description: The penalty (aka regularization term) to be used for the SGDClassifier/SGDRegressor
+#% answer: l2
+#% options: l1,l2,elasticnet
+#% multiple: yes
+#% guisection: Estimator settings
+#%end
+
+#%option
+#% key: alpha
+#% type: double
+#% label: Constant that multiplies the regularization term
+#% description: Constant that multiplies the regularization term for SGDClassifier/SGDRegressor/MLPClassifier/MLPRegressor
+#% answer: 0.0001
+#% multiple: yes
+#% guisection: Estimator settings
+#%end
+
+#%option
+#% key: l1_ratio
+#% type: double
+#% label: The Elastic Net mixing parameter
+#% description: The Elastic Net mixing parameter for SGDClassifier/SGDRegressor
+#% answer: 0.15
+#% multiple: yes
+#% guisection: Estimator settings
 #%end
 
 #%option
@@ -174,6 +204,16 @@
 #% guisection: Estimator settings
 #%end
 
+#%option
+#% key: hidden_units
+#% type: integer
+#% label: Number of neurons to use in a single hidden layer
+#% description: Number of neurons to use in a single hidden layer
+#% answer: 100
+#% multiple: yes
+#% guisection: Estimator settings
+#%end
+
 #%option string
 #% key: weights
 #% label: weight function
@@ -181,16 +221,6 @@
 #% answer: uniform
 #% options: uniform,distance
 #% multiple: yes
-#% guisection: Estimator settings
-#%end
-
-#%option string
-#% key: grid_search
-#% label: Resampling method to use for hyperparameter optimization
-#% description: Resampling method to use for hyperparameter optimization
-#% options: cross-validation,holdout
-#% answer: holdout
-#% multiple: no
 #% guisection: Estimator settings
 #%end
 
@@ -216,12 +246,6 @@
 #% type: integer
 #% description: Number of cross-validation folds
 #% answer: 1
-#% guisection: Cross validation
-#%end
-
-#%flag
-#% key: t
-#% description: Perform hyperparameter tuning only
 #% guisection: Cross validation
 #%end
 
@@ -327,9 +351,9 @@ if path is None:
     gs.fatal('Not able to find the r.learn library directory')
 sys.path.append(path)
 
-from utils import (model_classifiers, load_training_data, save_training_data,
+from utils import (predefined_estimators, load_training_data, save_training_data,
                    option_to_list, scoring_metrics, expand_feature_names,
-                   unwrap_feature_importances, unwrap_ohe)
+                   unwrap_feature_importances, unwrap_ohe, check_class_weights)
 from raster import RasterStack
 
 
@@ -385,8 +409,10 @@ def main():
     model_save = options['save_model']
 
     model_name = options['model_name']
-    grid_search = options['grid_search']
     hyperparams = {
+        'penalty': options['penalty'],
+        'alpha': options['alpha'],
+        'l1_ratio': options['l1_ratio'],
         'C': options['c'],
         'epsilon': options['epsilon'],
         'min_samples_split': options['min_samples_split'],
@@ -397,12 +423,12 @@ def main():
         'max_depth': options['max_depth'],
         'max_features': options['max_features'],
         'n_neighbors': options['n_neighbors'],
-        'weights': options['weights']
+        'weights': options['weights'],
+        'hidden_layer_sizes': options['hidden_units']
         }
 
     cv = int(options['cv'])
     group_raster = options['group_raster']
-    tune_only = flags['t']
     importances = flags['f']
     preds_file = options['preds_file']
     classif_file = options['classif_file']
@@ -419,11 +445,15 @@ def main():
 
     # make dicts for hyperparameters, datatypes and parameters for tuning
     hyperparams_type = dict.fromkeys(hyperparams, int)
+    hyperparams_type['penalty'] = str
+    hyperparams_type['alpha'] = float
+    hyperparams_type['l1_ratio'] = float
     hyperparams_type['C'] = float
     hyperparams_type['epsilon'] = float
     hyperparams_type['learning_rate'] = float
     hyperparams_type['subsample'] = float
     hyperparams_type['weights'] = str
+    hyperparams_type['hidden_layer_sizes'] = int
     param_grid = deepcopy(hyperparams_type)
     param_grid = dict.fromkeys(param_grid, None)
 
@@ -441,8 +471,8 @@ def main():
     if hyperparams['max_features'] == 0: hyperparams['max_features'] = 'auto'
     param_grid = {k: v for k, v in param_grid.items() if v is not None}
 
-    estimator, mode = model_classifiers(
-        model_name, random_state, n_jobs, hyperparams, balance)
+    estimator, mode = predefined_estimators(
+        model_name, random_state, n_jobs, hyperparams)
 
     # remove dict keys that are incompatible for the selected estimator
     estimator_params = estimator.get_params()
@@ -455,15 +485,16 @@ def main():
     # checks of input options
     if training_points != '' and field == '':
         gs.fatal('No attribute column specified for training points')
+        
+    if (mode == 'classification' and 
+        balance is True and 
+        model_name not in check_class_weights()):
 
-    if (any(param_grid) is True and cv == 1 and grid_search == 'cross-validation'):
-        gs.fatal(
-            'Hyperparameter search using cross validation requires cv > 1')
+        gs.warning(model_name + ' does not support class weights')
+        balance = False
     
-    if model_name == 'HistGradientBoostingClassifier' and balance is True:
-        gs.warning('HistGradientBoostingClassifier does not accept class',
-                   'weights. Use GradientBoostingClassifier if you want to',
-                   'rebalance your classes using class weights')
+    if mode == 'classification' and balance is True:
+        gs.warning('Balancing of class weights is only possible for classification')
         balance = False
 
     # define RasterStack
@@ -522,26 +553,18 @@ def main():
         if save_training != '':
             save_training_data(X, y, cat, group_id, save_training)
 
-    # define the inner search resampling method
+    # define the inner search resampling method (cv=2)
     from sklearn.model_selection import (
         GridSearchCV, StratifiedKFold, GroupKFold, KFold, ShuffleSplit,
         GroupShuffleSplit)
 
-    if any(param_grid) is True and grid_search == 'cross-validation':
+    if any(param_grid) is True:
         if group_id is None and mode == 'classification':
-            inner = StratifiedKFold(n_splits=cv, random_state=random_state)
+            inner = StratifiedKFold(n_splits=2, random_state=random_state)
         elif group_id is None and mode == 'regression':
-            inner = KFold(n_splits=cv, random_state=random_state)
+            inner = KFold(n_splits=2, random_state=random_state)
         else:
-            inner = GroupKFold(n_splits=cv)
-
-    elif any(param_grid) is True and grid_search == 'holdout':
-        if group_id is None:
-            inner = ShuffleSplit(
-                n_splits=1, test_size=0.33, random_state=random_state)
-        else:
-            inner = GroupShuffleSplit(
-                n_splits=1, test_size=0.33, random_state=random_state)
+            inner = GroupKFold(n_splits=2)
     else:
         inner = None
 
@@ -555,13 +578,14 @@ def main():
             outer = GroupKFold(n_splits=cv)
 
     # estimators that take sample_weights
-    if balance is True and mode == 'classification' and model_name in (
-            'GradientBoostingClassifier', 'GaussianNB'):
+    if balance is True:
         from sklearn.utils import compute_class_weight
 
         class_weights = compute_class_weight(
             class_weight='balanced', classes=(y), y=y)
+        
         fit_params = {'sample_weight': class_weights}
+
     else:
         class_weights = None
         fit_params = {}
@@ -642,11 +666,11 @@ def main():
     # estimator training
     gs.message(os.linesep)
     gs.message(('Fitting model using ' + model_name))
-        
+    
     try:
         estimator.fit(X, y, groups=group_id, **fit_params)
     except:
-        if model_name != 'HistGradientBoostingClassifier':
+        if balance is True:
             estimator.fit(X, y, **fit_params)
         else:
             estimator.fit(X, y)
@@ -662,7 +686,7 @@ def main():
             param_df.to_csv(param_file)
 
     # cross-validation
-    if cv > 1 and tune_only is not True:
+    if cv > 1:
         from sklearn.metrics import classification_report
         from sklearn import metrics
         

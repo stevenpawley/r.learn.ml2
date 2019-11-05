@@ -131,7 +131,7 @@ def expand_feature_names(feature_names, categorical_indices, enc_categories):
     return feature_names
     
 
-def model_classifiers(estimator, random_state, n_jobs, p, weights=None):
+def predefined_estimators(estimator, random_state, n_jobs, p):
     """
     Provides the classifiers and parameters using by the module
 
@@ -141,7 +141,6 @@ def model_classifiers(estimator, random_state, n_jobs, p, weights=None):
     random_state (float): Seed to use in randomized components
     n_jobs (integer): Number of processing cores to use
     p (dict): Classifier setttings (keys) and values
-    weights (string): None, or 'balanced' to add class_weights
 
     Returns
     -------
@@ -154,7 +153,7 @@ def model_classifiers(estimator, random_state, n_jobs, p, weights=None):
     except ImportError:
         pass
     
-    from sklearn.linear_model import LogisticRegression, LinearRegression
+    from sklearn.linear_model import LogisticRegression, LinearRegression, SGDRegressor, SGDClassifier
     from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
     from sklearn.discriminant_analysis import QuadraticDiscriminantAnalysis
     from sklearn.naive_bayes import GaussianNB
@@ -165,22 +164,16 @@ def model_classifiers(estimator, random_state, n_jobs, p, weights=None):
                                   GradientBoostingRegressor)
     from sklearn.svm import SVC, SVR
     from sklearn.neighbors import KNeighborsClassifier, KNeighborsRegressor
+    from sklearn.neural_network import MLPClassifier, MLPRegressor
 
-    # convert balanced boolean to scikit learn method
-    if weights is True:
-        weights = 'balanced'
-    else: weights = None
-
-    classifiers = {
+    estimators = {
         'SVC': SVC(C=p['C'],
-                   class_weight=weights,
                    probability=True,
                    random_state=random_state),
         'SVR': SVR(C=p['C'],
                    epsilon=p['epsilon']),
         'LogisticRegression':
             LogisticRegression(C=p['C'],
-                               class_weight=weights,
                                solver='liblinear',
                                random_state=random_state,
                                multi_class='auto',
@@ -189,12 +182,22 @@ def model_classifiers(estimator, random_state, n_jobs, p, weights=None):
         'LinearRegression':
             LinearRegression(n_jobs=n_jobs,
                              fit_intercept=True),
+        'SGDClassifier':
+            SGDClassifier(penalty=p['penalty'],
+                         alpha=p['alpha'],
+                         l1_ratio=p['l1_ratio'],
+                         n_jobs=n_jobs,
+                         random_state=random_state),
+        'SGDRegressor':
+            SGDRegressor(penalty=p['penalty'],
+                         alpha=p['alpha'],
+                         l1_ratio=p['l1_ratio'],
+                         random_state=random_state),
         'DecisionTreeClassifier':
             DecisionTreeClassifier(max_depth=p['max_depth'],
                                    max_features=p['max_features'],
                                    min_samples_split=p['min_samples_split'],
                                    min_samples_leaf=p['min_samples_leaf'],
-                                   class_weight=weights,
                                    random_state=random_state),
         'DecisionTreeRegressor':
             DecisionTreeRegressor(max_features=p['max_features'],
@@ -206,7 +209,6 @@ def model_classifiers(estimator, random_state, n_jobs, p, weights=None):
                                    max_features=p['max_features'],
                                    min_samples_split=p['min_samples_split'],
                                    min_samples_leaf=p['min_samples_leaf'],
-                                   class_weight=weights,
                                    random_state=random_state,
                                    n_jobs=n_jobs,
                                    oob_score=True),
@@ -223,7 +225,6 @@ def model_classifiers(estimator, random_state, n_jobs, p, weights=None):
                                  max_features=p['max_features'],
                                  min_samples_split=p['min_samples_split'],
                                  min_samples_leaf=p['min_samples_leaf'],
-                                 class_weight=weights,
                                  random_state=random_state,
                                  n_jobs=n_jobs,
                                  bootstrap=True,
@@ -273,6 +274,14 @@ def model_classifiers(estimator, random_state, n_jobs, p, weights=None):
                                       subsample=p['subsample'],
                                       max_features=p['max_features'],
                                       random_state=random_state),
+        'MLPClassifier':
+            MLPClassifier(hidden_layer_sizes=(p['hidden_layer_sizes'],),
+                          alpha=p['alpha'],
+                          random_state=random_state),
+        'MLPRegressor':
+            MLPRegressor(hidden_layer_sizes=(p['hidden_layer_sizes'],),
+                         alpha=p['alpha'],
+                         random_state=random_state),
         'GaussianNB': GaussianNB(),
         'LinearDiscriminantAnalysis': LinearDiscriminantAnalysis(),
         'QuadraticDiscriminantAnalysis': QuadraticDiscriminantAnalysis(),
@@ -286,7 +295,7 @@ def model_classifiers(estimator, random_state, n_jobs, p, weights=None):
 
     # define classifier
     try:
-        clf = classifiers[estimator]
+        model = estimators[estimator]
     except:
         gs.fatal('HistGradienBoostingClassifier and ' 
            'HistGradientBoostingRegressor only available on '
@@ -294,6 +303,8 @@ def model_classifiers(estimator, random_state, n_jobs, p, weights=None):
 
     # classification or regression
     if estimator == 'LogisticRegression' \
+        or estimator == 'SGDClassifier' \
+        or estimator == 'MLPClassifier' \
         or estimator == 'DecisionTreeClassifier' \
         or estimator == 'RandomForestClassifier' \
         or estimator == 'ExtraTreesClassifier' \
@@ -308,7 +319,23 @@ def model_classifiers(estimator, random_state, n_jobs, p, weights=None):
     else:
         mode = 'regression'
 
-    return (clf, mode)
+    return (model, mode)
+
+
+def check_class_weights():
+
+    support = [
+        'LogisticRegression',
+        'SGDClassifier',
+        'GaussianNB',
+        'DecisionTreeClassifier',
+        'RandomForestClassifier',
+        'ExtraTreesClassifier',
+        'GradientBoostingClassifier',
+        'SVC'
+        ]
+
+    return support
 
 
 def scoring_metrics(mode):
