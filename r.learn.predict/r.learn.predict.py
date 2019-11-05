@@ -96,10 +96,7 @@ def main():
     except ImportError:
         gs.fatal("Scikit learn 0.20 or newer is not installed")
 
-    # -------------------------------------------------------------------------
-    # Parser options
-    # -------------------------------------------------------------------------
-    
+    # parser options
     group = options['group']
     output = options['output']
     model_load = options['load_model']
@@ -115,26 +112,16 @@ def main():
     if prob_only is True and probability is False:
         gs.fatal('Need to set probabilities=True if prob_only=True')
 
-    # -------------------------------------------------------------------------
-    # Reload fitted model and trainign data
-    # -------------------------------------------------------------------------
-    estimator, y = joblib.load(model_load)
+    # reload fitted model and trainign data
+    estimator, _, y, _, _, _, _ = joblib.load(model_load)
     
-    # -------------------------------------------------------------------------
-    # Define RasterStack
-    # -------------------------------------------------------------------------
-
-    # fetch individual raster names from group
+    # define RasterStack
     maplist = gs.read_command(
         'i.group', group=group, flags='g', quiet=True).split(os.linesep)[:-1]
     
-    # create RasterStack
     stack = RasterStack(rasters=maplist)
 
-    # -------------------------------------------------------------------------
-    # Perform raster prediction
-    # -------------------------------------------------------------------------
-
+    # perform raster prediction
     # calculate chunksize
     region = Region()
     row = stack.read(1)
