@@ -9,6 +9,8 @@ from __future__ import absolute_import
 
 import grass.script as gs
 import numpy as np
+import os
+from copy import deepcopy
 
 
 def option_to_list(x, dtype=None):
@@ -47,6 +49,87 @@ def option_to_list(x, dtype=None):
     
     return x
 
+
+def join_categories(category_map, categories_enc):
+    """
+    Joins category indices from onehot encoding with the names of categories
+    in a GRASS GIS raster map
+
+    Args
+    ----
+    category_map : str
+        Name of GRASS GIS raster
+    
+    categories_enc : list
+        List of category names for a single feature
+
+    Returns
+    -------
+    list 
+        names of categories in the GRASS raster map.
+        If the raster did not contain categories then
+        the original indices are returned
+    """
+    categories_enc = [int(i) for i in categories_enc]
+
+    try:
+        # read grass raster category information
+        grass_cats = (
+            gs.
+            read_command('r.category', map=category_map, separator='comma').
+            split(os.linesep)[:-1])
+
+        cat_values = [int(i.split(',')[0]) for i in grass_cats]
+        cat_names = [i.split(',')[1] for i in grass_cats]
+        categories = {k: v for (k, v) in zip(cat_values, cat_names)}
+        
+        # subset category names in grass raster with onehot encoded indexes
+        categories_enc = [v for (k, v) in categories.items() if k in categories_enc]
+
+    except:
+        pass
+
+    return categories_enc
+
+
+def expand_feature_names(feature_names, categorical_indices, enc_categories):
+    """
+    Expands a list of feature names with dummy encoded categories
+
+    Args
+    ----
+    feature_names : list
+        List of feature names
+    
+    categorical_indices : list
+        The indices of the feature names that represent categorical variables
+    
+    enc_categories : list
+        List of categories in each feature, i.e. a nested list of 
+        n_features, n_categories. This should should be passed directly
+        from the OneHotEncoder().categories_ attribute.
+    
+    Returns
+    -------
+    list
+        Expanded feature names with categories of dummy variables
+    """
+    feature_names = deepcopy(feature_names)
+
+    for categorical_feature_idx, ohe_categories in zip(categorical_indices, enc_categories):
+        enc_feature_name = feature_names[categorical_feature_idx]                
+        ohe_categories = join_categories(enc_feature_name, ohe_categories)
+                        
+        enc_feature_dummy = []
+
+        for val in ohe_categories:
+            enc_feature_dummy.append('_'.join([enc_feature_name, str(val)]))
+
+        feature_names.remove(enc_feature_name)
+        feature_names = feature_names + enc_feature_dummy
+    
+    return feature_names
+    
 
 def model_classifiers(estimator, random_state, n_jobs, p, weights=None):
     """

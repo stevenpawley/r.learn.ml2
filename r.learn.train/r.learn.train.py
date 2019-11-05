@@ -227,8 +227,8 @@
 
 #%flag
 #% key: f
-#% label: Display Feature importances
-#% description: Display feature importances if supported by selected estimator model
+#% label: Compute Feature importances
+#% description: Compute feature importances using permutation (requires ELI5 package)
 #% guisection: Estimator settings
 #%end
 
@@ -328,7 +328,7 @@ if path is None:
 sys.path.append(path)
 
 from utils import (model_classifiers, load_training_data, save_training_data,
-                   option_to_list, scoring_metrics)
+                   option_to_list, scoring_metrics, expand_feature_names)
 from raster import RasterStack
 
 
@@ -775,21 +775,50 @@ def main():
         except AttributeError:
             pass
         
-        try:
-            fimp = pd.DataFrame({'Feature': maplist, 'Importances': fimp})
+        feature_names = deepcopy(stack.names)
+        feature_names = [i.split('@')[0] for i in feature_names]
 
-            gs.message(os.linesep)
-            gs.message('Feature importances')
-            gs.message('Feature' + '\t' + 'Score')
-            
-            for index, row in fimp.iterrows():
-                gs.message(row['Feature'] + '\t' + str(row['Importances']))
+        if category_maps is not None:
+            try:
+                enc = (estimator.
+                       named_steps['preprocessing'].
+                       named_transformers_['onehot']
+                      )
+            except AttributeError:
+                pass
+        
+            try:
+                enc = (estimator.
+                       best_estimator_.
+                       named_steps['preprocessing'].
+                       named_transformers_['onehot']
+                       )
+            except AttributeError:
+                pass
 
-            if fimp_file != '':
-                fimp.to_csv(fimp_file, index=False)
-        except:
-            gs.warning('Feature importances not available for the '
-                       'selected estimator model')
+            try:
+                enc = (estimator.
+                       best_estimator_.
+                       estimator_.named_steps['preprocessing'].
+                       named_transformers_['onehot'])
+            except AttributeError:
+                pass
+        
+            feature_names = expand_feature_names(
+                feature_names=feature_names,
+                categorical_indices=stack.categorical,
+                enc_categories=enc.categories_)
+        
+        fimp = pd.DataFrame({'Feature': feature_names, 'Importances': fimp})
+        gs.message(os.linesep)
+        gs.message('Feature importances')
+        gs.message('Feature' + '\t' + 'Score')
+        
+        for index, row in fimp.iterrows():
+            gs.message(row['Feature'] + '\t' + str(row['Importances']))
+
+        if fimp_file != '':
+            fimp.to_csv(fimp_file, index=False)
 
     # save the fitted model
     import joblib

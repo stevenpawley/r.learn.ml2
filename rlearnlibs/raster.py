@@ -820,22 +820,32 @@ class RasterStack(object):
                     flags='p', quiet=True, stdout_=PIPE).outputs.stdout
                 
                 rast_data = rast_data.split(os.linesep)[:-1]
-                
+
+                src.open('r')
+
+                if src.mtype == 'CELL':
+                    nodata = self._cell_nodata
+                    dtype = 'Int32'
+                else:
+                    nodata = np.nan
+                    dtype = 'float32'
+
                 X = (np.asarray([k.split('|')[1]
-                    if k.split('|')[1] != '*' else np.nan for k in rast_data]))
+                    if k.split('|')[1] != '*' else nodata for k in rast_data]))
 
                 cat = (np.asarray([int(k.split('|')[0])
                     if k.split('|')[1] != '*' else 0 for k in rast_data]))
-            
-                src.open('r')
+                
                 if src.mtype == 'CELL':
                     X = [int(i) for i in X]
                 else:
                     X = [float(i) for i in X]
+
                 src.close()
-                
+
                 X = pd.DataFrame(data=np.column_stack((X, cat)), 
-                                 columns=[name, key_col])
+                                 columns=[name, key_col], 
+                                 dtype=dtype)
                 Xs.append(X)
         
         for X in Xs:
