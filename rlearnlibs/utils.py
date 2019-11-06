@@ -522,10 +522,12 @@ def unwrap_ohe(estimator):
     return enc
 
 
-def read_grass_points(vect):
+def grass_read_vect(vect):
     """
     Read a GRASS GIS vector map containing point geometries into a geopandas
     GeoDataFrame
+
+    Currently only Point geometries are supported
 
     Args
     ----
@@ -564,11 +566,13 @@ def read_grass_points(vect):
     return df
 
 
-def write_grass_points(gpdf, x='x_crd', y='y_crd', output=None,
-                       overwrite=False):
+def grass_write_vect(gpdf, x='x_crd', y='y_crd', output=None,
+                     overwrite=False):
     """
     Write a geopandas.GeodataFrame of Point geometries into a GRASS GIS
     vector map
+
+    Currently only point geometries are supported
 
     Args
     ----
