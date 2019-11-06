@@ -11,6 +11,12 @@ import grass.script as gs
 import numpy as np
 import os
 from copy import deepcopy
+from grass.pygrass.vector import VectorTopo
+from copy import deepcopy
+import sqlite3
+from grass.pygrass.modules.shortcuts import database as db
+from grass.pygrass.modules.shortcuts import vector as gvect
+from grass.pygrass.modules.shortcuts import general as g
 
 
 def option_to_list(x, dtype=None):
@@ -514,3 +520,89 @@ def unwrap_ohe(estimator):
         pass
 
     return enc
+
+
+def read_grass_points(vect):
+    """
+    Read a GRASS GIS vector map containing point geometries into a geopandas
+    GeoDataFrame
+
+    Args
+    ----
+    vect : str
+        Name of GRASS GIS vector map
+    
+    Returns
+    -------
+    geopandas.GeoDataFrame
+    """
+
+    try:
+        from shapely.geometry import Point
+        import pandas as pd
+        import geopandas as gpd
+    except ImportError:
+        gs.fatal('Reading GRASS GIS point data into geopandas requires the ',
+                 'shapely and geopandas python packages to be installed')
+    
+    with VectorTopo(vect) as points:
+        df = pd.read_sql_query(
+            sql='select * from {vect}'.format(vect=vect), 
+            con=points.table.conn)
+
+        coords = [(p.cat, deepcopy(p.coords())) for p in points]
+        coords = pd.DataFrame(coords, columns=['cat', 'geometry'])
+
+        df = df.join(other=coords, how='right', rsuffix='.y')
+
+        df.geometry = [Point(p) for p in df.geometry]
+        df = gpd.GeoDataFrame(df)
+        df.crs = {'init': 'epsg:3400'}
+
+    df = df.drop(columns=['cat.y'])
+
+    return df
+
+
+def write_grass_points(gpdf, x='x_crd', y='y_crd', output=None,
+                       overwrite=False):
+    """
+    Write a geopandas.GeodataFrame of Point geometries into a GRASS GIS
+    vector map
+
+    Args
+    ----
+    gpdf : geopandas.GeoDataFrame
+        Containing point geometries
+
+    x, y : str
+        Name of coordinate fields to use in GRASS table
+    
+    output : str
+        Name of output GRASS GIS vector map
+    """
+    
+    if overwrite is True:
+        try:
+            db.droptable(table=output+'_table', flags='f')
+            g.remove(name=output, type='vector', flags='f')
+        except:
+            pass
+
+    sqlpath = (gs.read_command('db.databases', driver='sqlite').
+                strip(os.linesep))
+    con = sqlite3.connect(sqlpath)
+
+    gpdf[x] = gpdf.geometry.bounds.iloc[:, 0]
+    gpdf[y] = gpdf.geometry.bounds.iloc[:, 1]
+
+    (gpdf.
+     drop(labels=['geometry'], axis=1).
+     to_sql(output+'_table', con, index=True, index_label='cat',
+            if_exists='replace')
+     )
+
+    con.close()
+
+    gvect.in_db(table=output+'_table', x=x, y=y, output=output, flags='t', 
+                key='cat')
