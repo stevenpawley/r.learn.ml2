@@ -11,12 +11,15 @@ import grass.script as gs
 import numpy as np
 import os
 from copy import deepcopy
-from grass.pygrass.vector import VectorTopo
 from copy import deepcopy
 import sqlite3
+import tempfile
 from grass.pygrass.modules.shortcuts import database as db
 from grass.pygrass.modules.shortcuts import vector as gvect
+from grass.pygrass.modules.shortcuts import raster as grast
 from grass.pygrass.modules.shortcuts import general as g
+from grass.pygrass.vector import VectorTopo
+from grass.pygrass.vector.geometry import Point
 
 
 def option_to_list(x, dtype=None):
@@ -522,7 +525,7 @@ def unwrap_ohe(estimator):
     return enc
 
 
-def grass_read_vect(vect):
+def grass_read_vect_sql(vect):
     """
     Read a GRASS GIS vector map containing point geometries into a geopandas
     GeoDataFrame
@@ -566,7 +569,7 @@ def grass_read_vect(vect):
     return df
 
 
-def grass_write_vect(gpdf, x='x_crd', y='y_crd', output=None,
+def grass_write_vect_sql(gpdf, x='x_crd', y='y_crd', output=None,
                      overwrite=False):
     """
     Write a geopandas.GeodataFrame of Point geometries into a GRASS GIS
@@ -610,3 +613,76 @@ def grass_write_vect(gpdf, x='x_crd', y='y_crd', output=None,
 
     gvect.in_db(table=output+'_table', x=x, y=y, output=output, flags='t', 
                 key='cat')
+
+
+def grass_read_vect(vect):
+    try:
+        import geopandas as gpd
+    except ImportError:
+        gs.fatal('Geopandas python package is required')
+
+    temp_out = '.'.join([tempfile.NamedTemporaryFile().name, 'gpkg'])
+    gvect.out_ogr(input=vect, output=temp_out, format='GPKG')
+
+    return gpd.read_file(temp_out)
+
+
+def grass_write_vect(gpdf, output, overwrite=False, flags=''):
+    try:
+        import geopandas as gpd
+    except ImportError:
+        import geopandas as gpd
+
+    temp_out = '.'.join([tempfile.NamedTemporaryFile().name, 'gpkg'])
+    gpdf.to_file(temp_out, driver='GPKG')
+
+    gvect.in_ogr(input=temp_out, output=output, overwrite=overwrite,
+                 flags=flags)
+
+
+def euclidean_distance_fields(prefix, region, overwrite=False):
+
+    point_topleft = Point(
+        region.west+region.ewres/2, 
+        region.north-region.nsres/2)
+    point_topright = Point(
+        region.east-region.ewres/2, 
+        region.north-region.nsres/2)
+    point_lowerleft = Point(
+        region.west+region.ewres/2, 
+        region.south+region.nsres/2)
+    point_lowerright = Point(
+        region.east-region.ewres/2, 
+        region.south+region.nsres/2)
+    point_centre = Point(
+        region.west + (region.east-region.west) / 2, 
+        region.south + (region.north-region.south) / 2)
+
+    points = {
+        'topleft': point_topleft, 
+        'topright': point_topright, 
+        'lowerleft': point_lowerleft, 
+        'lowerright': point_lowerright, 
+        'centre': point_centre
+    }
+
+    for name, p in points.items():
+        
+        point_name = '_'.join([prefix, name])
+
+        vect = VectorTopo(name=point_name)
+        vect.open(mode='w', 
+                tab_name=point_name, 
+                tab_cols=[('cat', 'INTEGER PRIMARY KEY'),
+                          ('name', 'TEXT')])
+        vect.write(p, ('point', ))
+        vect.table.conn.commit()
+        vect.close()
+        
+        gvect.to_rast(input=point_name, type='point', use='val',
+                     output=point_name, overwrite=overwrite)
+        grast.grow_distance(point_name, distance='distance_to_'+point_name,
+                            overwrite=overwrite)
+        
+        g.remove(name=point_name, type='raster', flags='f')
+        g.remove(name=point_name, type='raster', flags='f')

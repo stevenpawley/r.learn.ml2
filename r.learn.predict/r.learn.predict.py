@@ -62,7 +62,7 @@
 
 #%option
 #% key: chunksize
-#% type: double
+#% type: integer
 #% description: Size of MB for each block of data to be read from the disk
 #% answer: 500
 #% guisection: Optional
