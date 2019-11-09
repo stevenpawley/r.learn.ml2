@@ -116,10 +116,7 @@ def main():
     estimator, y = joblib.load(model_load)
     
     # define RasterStack
-    maplist = gs.read_command(
-        'i.group', group=group, flags='g', quiet=True).split(os.linesep)[:-1]
-    
-    stack = RasterStack(rasters=maplist)
+    stack = RasterStack(group=group)
 
     # perform raster prediction
     # calculate chunksize

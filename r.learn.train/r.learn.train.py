@@ -498,10 +498,7 @@ def main():
         balance = False
 
     # define RasterStack
-    maplist = (gs.read_command("i.group", group=group, flags="g").
-               split(os.linesep)[:-1])
-    
-    stack = RasterStack(rasters=maplist)
+    stack = RasterStack(group=group)
     
     if category_maps is not None:
         stack.categorical = category_maps
@@ -636,16 +633,12 @@ def main():
     elif norm_data is True and category_maps is not None:
         scaler = StandardScaler()
         enc = OneHotEncoder(handle_unknown='ignore', sparse=False)
-
-        numeric_idx = np.setxor1d(
-            ar1=np.arange(0, stack.count),
-            ar2=stack.categorical)
                 
         trans = ColumnTransformer(
             remainder='passthrough',
             transformers=[
                 ('onehot', enc, stack.categorical),
-                ('scaling', scaler, numeric_idx)
+                ('scaling', scaler, ~stack.categorical)
                 ]
             )
 
@@ -667,13 +660,12 @@ def main():
     gs.message(os.linesep)
     gs.message(('Fitting model using ' + model_name))
     
-    try:
+    if balance is True and group_id is not None:
         estimator.fit(X, y, groups=group_id, **fit_params)
-    except:
-        if balance is True:
-            estimator.fit(X, y, **fit_params)
-        else:
-            estimator.fit(X, y)
+    elif balance is True and group_id is None:
+        estimator.fit(X, y, **fit_params)
+    else:
+        estimator.fit(X, y)
     
     # message best hyperparameter setup and optionally save using pandas
     if any(param_grid) is True:
