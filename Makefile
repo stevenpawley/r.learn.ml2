@@ -4,8 +4,7 @@ PGM = r.learn.ml
 
 SUBDIRS = rlearnlibs \
 	  r.learn.train \
-	  r.learn.predict \
-	  r.learn.crossval
+	  r.learn.predict
 	  
 include $(MODULE_TOPDIR)/include/Make/Dir.make
 
