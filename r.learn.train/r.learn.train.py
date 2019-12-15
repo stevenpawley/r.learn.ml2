@@ -252,7 +252,7 @@
 #%flag
 #% key: f
 #% label: Compute Feature importances
-#% description: Compute feature importances using permutation (requires ELI5 package)
+#% description: Compute feature importances using permutation
 #% guisection: Estimator settings
 #%end
 
@@ -351,9 +351,9 @@ if path is None:
     gs.fatal('Not able to find the r.learn library directory')
 sys.path.append(path)
 
-from utils import (predefined_estimators, load_training_data, save_training_data,
-                   option_to_list, scoring_metrics, expand_feature_names,
-                   unwrap_feature_importances, unwrap_ohe, check_class_weights)
+from utils import (predefined_estimators, load_training_data,
+                   save_training_data, option_to_list, scoring_metrics,
+                   check_class_weights)
 from raster import RasterStack
 
 
@@ -587,25 +587,6 @@ def main():
         class_weights = None
         fit_params = {}
 
-    # wrapped permutation importance estimator
-    if importances is True:
-        try:
-            from eli5.sklearn import PermutationImportance
-            
-            estimator = PermutationImportance(
-                estimator=estimator,
-                scoring=search_scorer,
-                n_iter=5,
-                random_state=random_state,
-                cv=3)
-            
-            param_grid = wrap_named_step(param_grid)
-            fit_params = wrap_named_step(fit_params)
-                        
-        except ImportError:
-            gs.warning('Permutation feature importances require the ELI5',
-                       'python package to be installed')
-
     # define the preprocessing pipeline
     from sklearn.pipeline import Pipeline
     from sklearn.compose import ColumnTransformer
@@ -676,7 +657,7 @@ def main():
         if param_file != '':
             param_df = pd.DataFrame(estimator.cv_results_)
             param_df.to_csv(param_file)
-
+    
     # cross-validation
     if cv > 1:
         from sklearn.metrics import classification_report
@@ -765,24 +746,28 @@ def main():
             text_file.close()
 
     if importances is True:
-        fimp = unwrap_feature_importances(estimator)        
+        from sklearn.inspection import permutation_importance
+        
+        print(estimator)
+        fimp = permutation_importance(
+            estimator, X, y, scoring=search_scorer, n_repeats=5, n_jobs=n_jobs,
+            random_state=random_state)
+
         feature_names = deepcopy(stack.names)
         feature_names = [i.split('@')[0] for i in feature_names]
 
-        if category_maps is not None:
-            enc = unwrap_ohe(estimator)        
-            feature_names = expand_feature_names(
-                feature_names=feature_names,
-                categorical_indices=stack.categorical,
-                enc_categories=enc.categories_)
-        
-        fimp = pd.DataFrame({'Feature': feature_names, 'Importances': fimp})
+        fimp = pd.DataFrame({
+            'feature': feature_names,
+            'importance': fimp['importances_mean'],
+            'std': fimp['importances_std']
+        })
+
         gs.message(os.linesep)
         gs.message('Feature importances')
         gs.message('Feature' + '\t' + 'Score')
         
         for index, row in fimp.iterrows():
-            gs.message(row['Feature'] + '\t' + str(row['Importances']))
+            gs.message(row['feature'] + '\t' + str(row['importance']) + '\t' + str(row['std']))
 
         if fimp_file != '':
             fimp.to_csv(fimp_file, index=False)

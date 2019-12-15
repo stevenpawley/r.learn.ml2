@@ -81,22 +81,23 @@ def join_categories(category_map, categories_enc):
     """
     categories_enc = [int(i) for i in categories_enc]
 
-    try:
-        # read grass raster category information
-        grass_cats = (
-            gs.
-            read_command('r.category', map=category_map, separator='comma').
-            split(os.linesep)[:-1])
+    # read grass raster category information
+    grass_cats = (
+        gs.
+        read_command('r.category', map=category_map, separator='comma').
+        split(os.linesep)[:-1])
 
-        cat_values = [int(i.split(',')[0]) for i in grass_cats]
-        cat_names = [i.split(',')[1] for i in grass_cats]
-        categories = {k: v for (k, v) in zip(cat_values, cat_names)}
-        
-        # subset category names in grass raster with onehot encoded indexes
-        categories_enc = [v for (k, v) in categories.items() if k in categories_enc]
+    cat_values = [int(i.split(',')[0]) for i in grass_cats]
+    cat_names = [i.split(',')[1] for i in grass_cats]
 
-    except:
-        pass
+    for i, nm in enumerate(cat_names):
+        if nm == '':
+            cat_names[i] = str(cat_values[i])
+
+    categories = {k: v for (k, v) in zip(cat_values, cat_names)}
+    
+    # subset category names in grass raster with onehot encoded indexes
+    categories_enc = [v for (k, v) in categories.items() if k in categories_enc]
 
     return categories_enc
 
@@ -125,7 +126,9 @@ def expand_feature_names(feature_names, categorical_indices, enc_categories):
     """
     feature_names = deepcopy(feature_names)
 
-    for categorical_feature_idx, ohe_categories in zip(categorical_indices, enc_categories):
+    for categorical_feature_idx, ohe_categories in zip(
+        categorical_indices, enc_categories):
+        
         enc_feature_name = feature_names[categorical_feature_idx]                
         ohe_categories = join_categories(enc_feature_name, ohe_categories)
                         
@@ -303,12 +306,7 @@ def predefined_estimators(estimator, random_state, n_jobs, p):
     }
 
     # define classifier
-    try:
-        model = estimators[estimator]
-    except:
-        gs.fatal('HistGradienBoostingClassifier and ' 
-           'HistGradientBoostingRegressor only available on '
-           'scikit-learn version >= 0.21.3')
+    model = estimators[estimator]
 
     # classification or regression
     if estimator == 'LogisticRegression' \
