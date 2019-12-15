@@ -748,7 +748,6 @@ def main():
     if importances is True:
         from sklearn.inspection import permutation_importance
         
-        print(estimator)
         fimp = permutation_importance(
             estimator, X, y, scoring=search_scorer, n_repeats=5, n_jobs=n_jobs,
             random_state=random_state)
