@@ -1,22 +1,90 @@
-from grass.pygrass.utils import set_path
-set_path('r.learn.ml')
-
+from grass.script.utils import get_lib_path
+from grass.pygrass.raster import RasterRow
+from copy import deepcopy
+from grass.pygrass.gis.region import Region
+from grass.pygrass.modules.grid import split
+import multiprocessing as mltp
+from itertools import chain
+import time
+import numpy as np
+import sys
+path = get_lib_path('r.learn.ml')
+sys.path.append(path)
 from raster import RasterStack
+import pandas as pd
+reg = Region()
+from grass.pygrass.vector import VectorTopo
+import os
+
+stack = RasterStack(group='terrain')
+df = stack.extract_points(vect_name='picks_mnt_selected', 
+                          fields='pick_thk_m',
+                          as_df=True)
+y = df.pick_thk_m.values
+X = df.drop(labels=['x', 'y', 'pick_thk_m', 'cat'], axis=1).values
+from sklearn.ensemble import RandomForestRegressor
+rf = RandomForestRegressor(n_jobs=-1, n_estimators=100)
+rf.fit(X, y)
+stack.predict(rf, 'test', height=100, overwrite=True)
+
+vect_name = 'picks@bedrock_topo'
+fields = 'pick_thk_m'
+
+if isinstance(fields, str):
+    fields = [fields]
+
+points = VectorTopo(vect_name.split('@')[0])
+points.open('r')
+points.num_primitives()['point']
+
+df = pd.DataFrame(points.table_to_dict()).transpose()
+df_cols = points.table.columns
+df_cols = [name for (name, dtype) in df_cols.items()]
+df = df.rename(columns={old:new for old, new in zip(df.columns, df_cols)})
+df = df.loc[:, fields + [points.table.key]]
+
+from grass.pygrass.modules.shortcuts import vector as v
+from subprocess import PIPE
+
+rast_data = v.what_rast(
+    map=vect_name,
+    raster='dem',
+    flags='p', quiet=True, stdout_=PIPE).outputs.stdout
+
+rast_data = rast_data.split(os.linesep)[:-1]
+
+X = (np.asarray([k.split('|')[1]
+    if k.split('|')[1] != '*' else np.nan for k in rast_data]))
+cat = (np.asarray([int(k.split('|')[0])
+    if k.split('|')[1] != '*' else 0 for k in rast_data]))
+
+name = 'dem'
+src = RasterRow('dem@bedrock_topo')
+src.open()
+src.mtype
+
+if src.mtype == 'CELL':
+    X = [int(i) for i in X]
+else:
+    X = [float(i) for i in X]
+src.close()
+
+X = pd.DataFrame(np.column_stack((X, cat)), columns=[name, points.table.key])
+df = df.merge(X, on=points.table.key, how='left')
+
+
 
 stack = RasterStack(rasters=["lsat5_1987_10", "lsat5_1987_20", "lsat5_1987_30", "lsat5_1987_40",
                              "lsat5_1987_50", "lsat5_1987_70"])
-stack = RasterStack(rasters=maplist)
-stack.lsat5_1987_10
 
-maplist2 = deepcopy(maplist)
-maplist2 = [i.split('@')[0] for i in maplist2]
+X, y, crd = stack.extract_points(
+        vect_name='landclass96_roi',
+        fields='value')
 
-stack = RasterStack(rasters=maplist2)
-stack.lsat5_1987_10
+df = stack.extract_points(
+        vect_name='landclass96_roi', fields='value', 
+        as_df=True)
 
-
-X, y, crd = stack.extract_points(vect_name='landclass96_roi', fields=['value', 'cat'])
-df = stack.extract_points(vect_name='landclass96_roi', field='value', as_df=True)
 df = stack.extract_pixels(response='landclass96_roi', as_df=True)
 
 X, y, crd = stack.extract_pixels(response='landclass96_roi')
@@ -24,11 +92,7 @@ X, y, crd = stack.extract_pixels(response='landclass96_roi')
 stack.head()
 stack.tail()
 
-data = stack.read()
-data.shape
-
 df = stack.to_pandas()
-# df = stack.to_pandas(res=500)
 df = df.melt(id_vars=['x', 'y'])
 
 from plotnine import *
@@ -41,76 +105,67 @@ from plotnine import *
  theme(axis_title = element_blank()))
 
 from sklearn.ensemble import RandomForestClassifier
-
-clf = RandomForestClassifier(n_estimators=100)
+from sklearn.model_selection import GridSearchCV
+clf = RandomForestClassifier(n_estimators=100, n_jobs=-1)
+clf = GridSearchCV(clf, param_grid={'min_samples_leaf': [1, 2, 5]})
 clf.fit(X, y)
 
-stack.predict(clf, output='test', overwrite=True, height=25)
-stack.predict_proba(clf, output='test', overwrite=True, height=25)
-
-
-test = RasterRow('test')
-from grass.pygrass.modules.shortcuts import raster as r
-r.colors('test', color='random')
-test
-test.close()
+stack.predict(clf, output='test_script', overwrite=True, height=25)
+stack.predict_proba(clf, output='test_script', overwrite=True, height=25)
 
 from sklearn.model_selection import cross_validate
 cross_validate(clf, X, y, cv=3)
 
-
-
-    
-from grass.pygrass.gis.region import Region
-from grass.pygrass.modules.grid.grid import GridModule
-from grass.pygrass.modules.grid import split
-from grass.pygrass.modules.shortcuts import general as g
-from grass.pygrass.raster import RasterRow
-import multiprocessing as mltp
-from itertools import chain
-import time
-import numpy as np
-
-reg = Region()
-
 # profile reading region-based blocks
-# testreg = GridModule('g.region', width=100, height=100, processes=4)
-testreg = split.split_region_tiles(width=reg.cols, height=100)
-
-def worker(src):
-    window, src = src
-    window = dict(window)
-    window['n'] = window.pop('north')
-    window['s'] = window.pop('south')
-    window['e'] = window.pop('east')
-    window['w'] = window.pop('west')
-    del(window['top'])
-    del(window['bottom'])
-    
-    g.region(**window)
-    
-    with RasterRow(src) as rs:
-        arr = np.asarray(rs)
-    return(arr)
-
+testreg = split.split_region_tiles(width=reg.cols, height=300)
 windows = list(chain.from_iterable(testreg))
 windows = [[i.items(), "lsat5_1987_10"] for i in windows]
 
+def worker(cmd):
+
+    window, src = cmd
+    
+    reg = Region()
+    old_reg = deepcopy(reg)
+    
+    try:
+        # update region
+        reg.north = dict(window)['north']
+        reg.south = dict(window)['south']
+        reg.west = dict(window)['west']
+        reg.east = dict(window)['east']
+        reg.set_current()
+        reg.write()
+        reg.set_raster_region()
+        
+        # read raster data
+        with RasterRow(src) as rs:
+            arr = np.asarray(rs)
+    except:
+        pass
+
+    finally:
+        # reset region
+        old_reg.write()
+        reg.set_raster_region()
+    
+    return(arr)
+
 start = time.time()
 pool = mltp.Pool(processes=8)
-arrs = pool.map(func=worker, iterable=windows)
+arrs = pool.map_async(func=worker, iterable=windows)
+arrs.wait()
 end = time.time()
 print(end - start)
 
+np.row_stack(arrs.get()).shape
 
 # profile reading single thread per row
 start = time.time()
-
 with RasterRow("lsat5_1987_10") as src:
     arr = []
     for i in range(reg.rows):
         arr.append(src[i])
-
 end = time.time()
 print(end - start)
 
@@ -133,3 +188,13 @@ src = RasterRow("lsat5_1987_10")
 src.open()
 src[0]
 src.close()
+
+
+from grass.pygrass.modules.grid.grid import GridModule
+
+grd = GridModule('r.learn.predict', width=100, height=100,
+                 group='land@landsat',
+                 load_model='/home/steven/Downloads/model.gz',
+                 output='test',
+                 overwrite=True)
+grd.run()
