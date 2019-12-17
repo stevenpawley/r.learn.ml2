@@ -348,7 +348,7 @@ from grass.script.utils import get_lib_path
 path = get_lib_path(modname='r.learn.ml')
 
 if path is None:
-    gs.fatal('Not able to find the r.learn library directory')
+    gs.fatal('Not able to find the r.learn.ml library directory')
 sys.path.append(path)
 
 from utils import (predefined_estimators, load_training_data,
@@ -389,11 +389,11 @@ def main():
     try:
         import sklearn
 
-        if sklearn.__version__ < '0.20':
-            gs.fatal("Scikit learn 0.20 or newer is required")
+        if sklearn.__version__ < '0.22':
+            gs.fatal("Scikit learn 0.22 or newer is required")
         
     except ImportError:
-        gs.fatal("Scikit learn 0.20 or newer is not installed")
+        gs.fatal("Scikit learn 0.22 or newer is not installed")
 
     try:
         import pandas as pd
