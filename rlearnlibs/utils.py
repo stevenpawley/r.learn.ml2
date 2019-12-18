@@ -305,8 +305,7 @@ def scoring_metrics(mode):
     return(scoring, search_scorer)
 
 
-
-def save_training_data(X, y, cat, groups, file):
+def save_training_data(file, X, y, cat, groups=None, names=None):
     """
     Saves any extracted training data to a csv file.
     
@@ -316,22 +315,42 @@ def save_training_data(X, y, cat, groups, file):
         col (n+1): grass cat value
         col (n+2): group idx
 
-    Args
-    ----
-    X (2d numpy array): Numpy array containing predictor values
-    y (1d numpy array): Numpy array containing labels
-    cat (1d numpy array): Numpy array of GRASS key column
-    groups (1d numpy array): Numpy array of group labels
-    file (string): Path to a csv file to save data to
+    Parameters
+    ----------
+    file : str
+        Path to a csv file to save data to
+    X : ndarray
+        2d numpy array containing predictor values
+    y : ndarray
+        1d numpy array containing labels
+    cat : ndarray
+        1d numpy array of GRASS key column
+    groups :ndarray (opt)
+        1d numpy array containing group labels
+    names : list (opt)
+        Optionally pass names of features to use as a heading
     """
-
+    if isinstance(names, str):
+        names = list(names)
+        
+    if names is None:
+        names = ['feature'+str(i) for i in range(X.shape[1])]
+        
+    names = ','.join(names + ['response', 'cat', 'groups'])
+    
     # if there are no group labels, create a nan filled array
     if groups is None:
         groups = np.empty((y.shape[0]))
         groups[:] = np.nan
 
     training_data = np.column_stack([X, y, cat, groups])
-    np.savetxt(file, training_data, delimiter=',')
+    
+    np.savetxt(
+        fname=file, 
+        X=training_data,
+        delimiter=',',
+        header=names,
+		comments='')
 
 
 def load_training_data(file):
@@ -350,7 +369,7 @@ def load_training_data(file):
     groups (1d numpy array): Numpy array of group labels, or None
     """
 
-    training_data = np.loadtxt(file, delimiter=',')
+    training_data = np.loadtxt(file, delimiter=',', skiprows=1)
     n_cols = training_data.shape[1]
     last_Xcol = n_cols-3
 

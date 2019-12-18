@@ -547,7 +547,7 @@ def main():
                                           random_state=random_state)
 
         if save_training != '':
-            save_training_data(X, y, cat, group_id, save_training)
+            save_training_data(save_training, X, y, cat, group_id, stack.names)
 
     # define the inner search resampling method (cv=2)
     from sklearn.model_selection import (
