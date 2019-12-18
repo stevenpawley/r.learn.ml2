@@ -11,7 +11,6 @@ from grass.pygrass.gis.region import Region
 from grass.pygrass.modules.shortcuts import imagery as im
 from grass.pygrass.modules.shortcuts import raster as r
 from grass.pygrass.modules.shortcuts import vector as v
-from grass.pygrass.modules.shortcuts import general as g
 from grass.pygrass.raster import RasterRow, numpy2raster
 from grass.pygrass.raster.buffer import Buffer
 from grass.pygrass.utils import get_mapset_raster, get_raster_for_points
@@ -171,8 +170,6 @@ class RasterStack(object):
         self.mtypes = {}
 
         # split raster name from mapset name
-        current_mapset = (g.mapset(flags='p', stdout_=PIPE).outputs.stdout.
-                          split(os.linesep))[0]
         raster_names = [i.split('@')[0] for i in mapnames]
         mapset_names = [get_mapset_raster(i) for i in mapnames]
         
@@ -803,7 +800,7 @@ class RasterStack(object):
                 
         if isinstance(fields, str):
             fields = [fields]
-                
+          
         # open grass vector
         with VectorTopo(vect_name.split('@')[0], mode='r') as points:
             
@@ -816,6 +813,7 @@ class RasterStack(object):
             df = df.rename(
                 columns={old: new for old, new in zip(df.columns, df_cols)})
             df = df.loc[:, fields + [points.table.key]]
+            df.loc[:, key_col] = df.loc[:, key_col].astype(pd.Int64Dtype())
             
             Xs = []
     
@@ -842,8 +840,7 @@ class RasterStack(object):
                 X = (np.asarray([k.split('|')[1]
                     if k.split('|')[1] != '*' else nodata for k in rast_data]))
 
-                cat = (np.asarray([int(k.split('|')[0])
-                    if k.split('|')[1] != '*' else 0 for k in rast_data]))
+                cat = (np.asarray([int(k.split('|')[0]) for k in rast_data]))
                 
                 if src.mtype == 'CELL':
                     X = [int(i) for i in X]
@@ -879,7 +876,7 @@ class RasterStack(object):
             
             X = df.loc[:, df.columns.isin(self.loc.keys())].values
             y = df.loc[:, fields].values
-            cat = df.loc[:, key_col].values
+            cat = np.asarray(df.loc[:, key_col].values)
             return X, y, cat
 
         return df

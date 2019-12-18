@@ -518,7 +518,6 @@ def main():
             X, y, cat = stack.extract_points(training_points, field)
                 
         y = y.flatten()  # reshape to 1 dimension
-        cat = cat.flatten()
         
         # label encoding
         if y.dtype in [np.object_, np.object]:
