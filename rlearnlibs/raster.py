@@ -11,6 +11,7 @@ from grass.pygrass.gis.region import Region
 from grass.pygrass.modules.shortcuts import imagery as im
 from grass.pygrass.modules.shortcuts import raster as r
 from grass.pygrass.modules.shortcuts import vector as v
+from grass.pygrass.modules.shortcuts import general as g
 from grass.pygrass.raster import RasterRow, numpy2raster
 from grass.pygrass.raster.buffer import Buffer
 from grass.pygrass.utils import get_mapset_raster, get_raster_for_points
@@ -170,8 +171,16 @@ class RasterStack(object):
         self.mtypes = {}
 
         # split raster name from mapset name
+        current_mapset = (g.mapset(flags='p', stdout_=PIPE).outputs.stdout.
+                          split(os.linesep))[0]
         raster_names = [i.split('@')[0] for i in mapnames]
         mapset_names = [get_mapset_raster(i) for i in mapnames]
+        
+        if None in mapset_names:
+            missing_idx = mapset_names.index(None)
+            missing_rasters = raster_names[missing_idx]
+            gs.fatal('GRASS GIS raster(s) {x} is not found in any mapsets'.
+                     format(x=missing_rasters))
         
         # add rasters and metadata to stack
         for name, mapset in zip(raster_names, mapset_names):
