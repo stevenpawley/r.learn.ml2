@@ -296,7 +296,7 @@
 #% key: n_jobs
 #% type: integer
 #% description: Number of cores for multiprocessing, -2 is n_cores-1
-#% answer: 1
+#% answer: -2
 #% guisection: Optional
 #%end
 
