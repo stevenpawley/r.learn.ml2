@@ -11,6 +11,7 @@ from grass.pygrass.gis.region import Region
 from grass.pygrass.modules.shortcuts import imagery as im
 from grass.pygrass.modules.shortcuts import raster as r
 from grass.pygrass.modules.shortcuts import vector as v
+from grass.pygrass.modules.shortcuts import general as g
 from grass.pygrass.raster import RasterRow, numpy2raster
 from grass.pygrass.raster.buffer import Buffer
 from grass.pygrass.utils import get_mapset_raster, get_raster_for_points
@@ -767,7 +768,7 @@ class RasterStack(object):
         return X, y, cat
 
     def extract_points(self, vect_name, fields, na_rm=True, as_df=False):
-        """Samples a list of GDAL rasters using a point data set.
+        """Samples a list of GRASS rasters using a point dataset.
 
         Parameters
         ----------
@@ -800,9 +801,16 @@ class RasterStack(object):
                 
         if isinstance(fields, str):
             fields = [fields]
+        
+        vname = vect_name.split('@')[0]
+
+        try:
+            mapset = vect_name.split('@')[1]
+        except IndexError:
+            mapset = g.mapset(flags='p', stdout_=PIPE).outputs.stdout.split(os.linesep)[0]
           
         # open grass vector
-        with VectorTopo(vect_name.split('@')[0], mode='r') as points:
+        with VectorTopo(name=vname, mapset=mapset, mode='r') as points:
             
             key_col = points.table.key
                 
