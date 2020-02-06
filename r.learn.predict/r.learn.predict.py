@@ -77,9 +77,9 @@ import numpy as np
 from grass.script.utils import get_lib_path
 from grass.pygrass.gis.region import Region
 
-path = get_lib_path(modname='r.learn.ml')
+path = get_lib_path(modname="r.learn.ml")
 if path is None:
-    gs.fatal('Not able to find the r.learn library directory')
+    gs.fatal("Not able to find the r.learn library directory")
 sys.path.append(path)
 
 from raster import RasterStack
@@ -90,31 +90,31 @@ def main():
         import sklearn
         import joblib
 
-        if sklearn.__version__ < '0.20':
+        if sklearn.__version__ < "0.20":
             gs.fatal("Scikit learn 0.20 or newer is required")
-        
+
     except ImportError:
         gs.fatal("Scikit learn 0.20 or newer is not installed")
 
     # parser options
-    group = options['group']
-    output = options['output']
-    model_load = options['load_model']
-    probability = flags['p']
-    prob_only = flags['z']
-    chunksize = int(options['chunksize'])
-    
+    group = options["group"]
+    output = options["output"]
+    model_load = options["load_model"]
+    probability = flags["p"]
+    prob_only = flags["z"]
+    chunksize = int(options["chunksize"])
+
     # remove @ from output in case overwriting result
-    if '@' in output:
-        output = output.split('@')[0]
-        
+    if "@" in output:
+        output = output.split("@")[0]
+
     # check that probabilities=True if prob_only=True
     if prob_only is True and probability is False:
-        gs.fatal('Need to set probabilities=True if prob_only=True')
+        gs.fatal("Need to set probabilities=True if prob_only=True")
 
     # reload fitted model and trainign data
     estimator, y = joblib.load(model_load)
-    
+
     # define RasterStack
     stack = RasterStack(group=group)
 
@@ -124,24 +124,30 @@ def main():
     row = stack.read(1)
     rowsize_mg = row.nbytes * 1e-6
     row_incr = int(float(chunksize) / float(rowsize_mg))
-    
+
     # do not read by increments if increment > n_rows
     if row_incr >= region.rows:
         row_incr = None
-        
+
     # prediction
     if prob_only is False:
-        gs.message('Predicting classification/regression raster...')
-        stack.predict(estimator=estimator, output=output, height=row_incr,
-                      overwrite=gs.overwrite())
+        gs.message("Predicting classification/regression raster...")
+        stack.predict(
+            estimator=estimator,
+            output=output,
+            height=row_incr,
+            overwrite=gs.overwrite(),
+        )
 
     if probability is True:
-        gs.message('Predicting class probabilities...')
+        gs.message("Predicting class probabilities...")
         stack.predict_proba(
-            estimator=estimator, output=output,
+            estimator=estimator,
+            output=output,
             class_labels=np.unique(y),
             overwrite=gs.overwrite(),
-            height=row_incr)
+            height=row_incr,
+        )
 
 
 if __name__ == "__main__":

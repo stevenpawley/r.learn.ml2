@@ -204,12 +204,11 @@
 #% guisection: Estimator settings
 #%end
 
-#%option
+#%option string
 #% key: hidden_units
-#% type: integer
-#% label: Number of neurons to use in a single hidden layer
-#% description: Number of neurons to use in a single hidden layer
-#% answer: 100
+#% label: Number of neurons to use in the hidden layers
+#% description: Number of neurons to use in each layer, i.e. (100;50) for two layers
+#% answer: (100;100)
 #% multiple: yes
 #% guisection: Estimator settings
 #%end
@@ -338,6 +337,7 @@ from __future__ import absolute_import, print_function
 import atexit
 import os
 import sys
+import re
 import warnings
 from copy import deepcopy
 
@@ -345,24 +345,29 @@ import grass.script as gs
 import numpy as np
 from grass.script.utils import get_lib_path
 
-path = get_lib_path(modname='r.learn.ml')
+path = get_lib_path(modname="r.learn.ml")
 
 if path is None:
-    gs.fatal('Not able to find the r.learn.ml library directory')
+    gs.fatal("Not able to find the r.learn.ml library directory")
 sys.path.append(path)
 
-from utils import (predefined_estimators, load_training_data,
-                   save_training_data, option_to_list, scoring_metrics,
-                   check_class_weights)
+from utils import (
+    predefined_estimators,
+    load_training_data,
+    save_training_data,
+    option_to_list,
+    scoring_metrics,
+    check_class_weights,
+)
 from raster import RasterStack
 
 
 tmp_rast = []
 
+
 def cleanup():
     for rast in tmp_rast:
-        gs.run_command("g.remove", name=rast, type='raster', flags='f',
-                       quiet=True)
+        gs.run_command("g.remove", name=rast, type="raster", flags="f", quiet=True)
 
 
 def warn(*args, **kwargs):
@@ -374,14 +379,14 @@ warnings.warn = warn
 
 def wrap_named_step(param_grid):
     translate = {}
-    
+
     for k, v in param_grid.items():
-        newkey = 'estimator__' + k
+        newkey = "estimator__" + k
         translate[k] = newkey
-    
+
     for old, new in translate.items():
         param_grid[new] = param_grid.pop(old)
-    
+
     return param_grid
 
 
@@ -389,144 +394,161 @@ def main():
     try:
         import sklearn
 
-        if sklearn.__version__ < '0.22':
+        if sklearn.__version__ < "0.22":
             gs.fatal("Scikit learn 0.22 or newer is required")
-        
+
     except ImportError:
         gs.fatal("Scikit learn 0.22 or newer is not installed")
 
     try:
         import pandas as pd
-        
+
     except ImportError:
         gs.fatal("Pandas is not installed ")
 
     # parser options
-    group = options['group']
-    training_map = options['training_map']
-    training_points = options['training_points']
-    field = options['field']
-    model_save = options['save_model']
+    group = options["group"]
+    training_map = options["training_map"]
+    training_points = options["training_points"]
+    field = options["field"]
+    model_save = options["save_model"]
 
-    model_name = options['model_name']
+    model_name = options["model_name"]
     hyperparams = {
-        'penalty': options['penalty'],
-        'alpha': options['alpha'],
-        'l1_ratio': options['l1_ratio'],
-        'C': options['c'],
-        'epsilon': options['epsilon'],
-        'min_samples_split': options['min_samples_split'],
-        'min_samples_leaf': options['min_samples_leaf'],
-        'n_estimators': options['n_estimators'],
-        'learning_rate': options['learning_rate'],
-        'subsample': options['subsample'],
-        'max_depth': options['max_depth'],
-        'max_features': options['max_features'],
-        'n_neighbors': options['n_neighbors'],
-        'weights': options['weights'],
-        'hidden_layer_sizes': options['hidden_units']
-        }
+        "penalty": options["penalty"],
+        "alpha": options["alpha"],
+        "l1_ratio": options["l1_ratio"],
+        "C": options["c"],
+        "epsilon": options["epsilon"],
+        "min_samples_split": options["min_samples_split"],
+        "min_samples_leaf": options["min_samples_leaf"],
+        "n_estimators": options["n_estimators"],
+        "learning_rate": options["learning_rate"],
+        "subsample": options["subsample"],
+        "max_depth": options["max_depth"],
+        "max_features": options["max_features"],
+        "n_neighbors": options["n_neighbors"],
+        "weights": options["weights"],
+        "hidden_layer_sizes": options["hidden_units"],
+    }
 
-    cv = int(options['cv'])
-    group_raster = options['group_raster']
-    importances = flags['f']
-    preds_file = options['preds_file']
-    classif_file = options['classif_file']
-    fimp_file = options['fimp_file']
-    param_file = options['param_file']
+    cv = int(options["cv"])
+    group_raster = options["group_raster"]
+    importances = flags["f"]
+    preds_file = options["preds_file"]
+    classif_file = options["classif_file"]
+    fimp_file = options["fimp_file"]
+    param_file = options["param_file"]
 
-    norm_data = flags['s']
-    category_maps = option_to_list(options['category_maps'])
-    random_state = int(options['random_state'])
-    load_training = options['load_training']
-    save_training = options['save_training']
-    n_jobs = int(options['n_jobs'])
-    balance = flags['b']
+    norm_data = flags["s"]
+    category_maps = option_to_list(options["category_maps"])
+    random_state = int(options["random_state"])
+    load_training = options["load_training"]
+    save_training = options["save_training"]
+    n_jobs = int(options["n_jobs"])
+    balance = flags["b"]
 
     # make dicts for hyperparameters, datatypes and parameters for tuning
     hyperparams_type = dict.fromkeys(hyperparams, int)
-    hyperparams_type['penalty'] = str
-    hyperparams_type['alpha'] = float
-    hyperparams_type['l1_ratio'] = float
-    hyperparams_type['C'] = float
-    hyperparams_type['epsilon'] = float
-    hyperparams_type['learning_rate'] = float
-    hyperparams_type['subsample'] = float
-    hyperparams_type['weights'] = str
-    hyperparams_type['hidden_layer_sizes'] = int
+    hyperparams_type["penalty"] = str
+    hyperparams_type["alpha"] = float
+    hyperparams_type["l1_ratio"] = float
+    hyperparams_type["C"] = float
+    hyperparams_type["epsilon"] = float
+    hyperparams_type["learning_rate"] = float
+    hyperparams_type["subsample"] = float
+    hyperparams_type["weights"] = str
+    hyperparams_type["hidden_layer_sizes"] = tuple
     param_grid = deepcopy(hyperparams_type)
     param_grid = dict.fromkeys(param_grid, None)
 
-    for key, val in hyperparams.items():
-        if ',' in val:
-            param_grid[key] =  \
-                [hyperparams_type[key](i) for i in val.split(',')]
-            
-            hyperparams[key] = \
-                [hyperparams_type[key](i) for i in val.split(',')][0]
-        else:
-            hyperparams[key] = hyperparams_type[key](val)
+    def process_hidden(val):
+        val = re.sub(r"[\(\)]", "", val)
+        val = [int(i.strip()) for i in val.split(";")]
+        return val
 
-    if hyperparams['max_depth'] == 0: hyperparams['max_depth'] = None
-    if hyperparams['max_features'] == 0: hyperparams['max_features'] = 'auto'
+    for key, val in hyperparams.items():
+        if "," in val:
+            values = val.split(",")
+            
+            if key == 'hidden_layer_sizes':
+                values = [process_hidden(i) for i in values]
+                    
+            param_grid[key] = [hyperparams_type[key](i) for i in values]
+            hyperparams[key] = [hyperparams_type[key](i) for i in values][0] 
+        else:
+            if key == 'hidden_layer_sizes':
+                hyperparams[key] = hyperparams_type[key](process_hidden(val))
+            else:
+                hyperparams[key] = hyperparams_type[key](val)
+
+    if hyperparams["max_depth"] == 0:
+        hyperparams["max_depth"] = None
+    if hyperparams["max_features"] == 0:
+        hyperparams["max_features"] = "auto"
     param_grid = {k: v for k, v in param_grid.items() if v is not None}
 
     estimator, mode = predefined_estimators(
-        model_name, random_state, n_jobs, hyperparams)
+        model_name, random_state, n_jobs, hyperparams
+    )
+    
+    print(estimator)
 
     # remove dict keys that are incompatible for the selected estimator
     estimator_params = estimator.get_params()
     param_grid = {
-        key: value for key, value in param_grid.items()
-        if key in estimator_params
-        }
+        key: value for key, value in param_grid.items() if key in estimator_params
+    }
     scoring, search_scorer = scoring_metrics(mode)
 
     # checks of input options
-    if training_points != '' and field == '':
-        gs.fatal('No attribute column specified for training points')
-        
-    if (mode == 'classification' and 
-        balance is True and 
-        model_name not in check_class_weights()):
+    if training_points != "" and field == "":
+        gs.fatal("No attribute column specified for training points")
 
-        gs.warning(model_name + ' does not support class weights')
+    if (
+        mode == "classification"
+        and balance is True
+        and model_name not in check_class_weights()
+    ):
+
+        gs.warning(model_name + " does not support class weights")
         balance = False
-    
-    if mode == 'classification' and balance is True:
-        gs.warning('Balancing of class weights is only possible for classification')
+
+    if mode == "classification" and balance is True:
+        gs.warning("Balancing of class weights is only possible for classification")
         balance = False
 
     # define RasterStack
     stack = RasterStack(group=group)
-    
+
     if category_maps is not None:
         stack.categorical = category_maps
 
     # extract training data
-    if load_training != '':
+    if load_training != "":
         X, y, cat, group_id = load_training_data(load_training)
     else:
-        gs.message('Extracting training data')
+        gs.message("Extracting training data")
 
-        if group_raster != '':
+        if group_raster != "":
             stack.append(group_raster)
-            
-        if training_map != '':
+
+        if training_map != "":
             X, y, cat = stack.extract_pixels(training_map)
-        elif training_points != '':
+        elif training_points != "":
             X, y, cat = stack.extract_points(training_points, field)
-                
+
         y = y.flatten()  # reshape to 1 dimension
-        
+
         # label encoding
         if y.dtype in [np.object_, np.object]:
             from sklearn.preprocessing import LabelEncoder
+
             le = LabelEncoder()
             y = le.fit_transform(y)
 
         # take group id from last column and remove from predictors
-        if group_raster != '':
+        if group_raster != "":
             group_id = X[:, -1]
             X = np.delete(X, -1, axis=1)
             stack.drop(group_raster)
@@ -535,29 +557,37 @@ def main():
 
         # check for labelled pixels and training data
         if y.shape[0] == 0 or X.shape[0] == 0:
-            gs.fatal('No training pixels or pixels in imagery group '
-                     '...check computational region')
+            gs.fatal(
+                "No training pixels or pixels in imagery group "
+                "...check computational region"
+            )
 
         from sklearn.utils import shuffle
-        
+
         if group_id is None:
             X, y, cat = shuffle(X, y, cat, random_state=random_state)
         else:
-            X, y, cat, group_id = shuffle(X, y, cat, group_id,
-                                          random_state=random_state)
+            X, y, cat, group_id = shuffle(
+                X, y, cat, group_id, random_state=random_state
+            )
 
-        if save_training != '':
+        if save_training != "":
             save_training_data(save_training, X, y, cat, group_id, stack.names)
 
     # define the inner search resampling method (cv=2)
     from sklearn.model_selection import (
-        GridSearchCV, StratifiedKFold, GroupKFold, KFold, ShuffleSplit,
-        GroupShuffleSplit)
+        GridSearchCV,
+        StratifiedKFold,
+        GroupKFold,
+        KFold,
+        ShuffleSplit,
+        GroupShuffleSplit,
+    )
 
     if any(param_grid) is True:
-        if group_id is None and mode == 'classification':
+        if group_id is None and mode == "classification":
             inner = StratifiedKFold(n_splits=2, random_state=random_state)
-        elif group_id is None and mode == 'regression':
+        elif group_id is None and mode == "regression":
             inner = KFold(n_splits=2, random_state=random_state)
         else:
             inner = GroupKFold(n_splits=2)
@@ -566,9 +596,9 @@ def main():
 
     # define the outer search resampling method
     if cv > 1:
-        if group_id is None and mode == 'classification':
+        if group_id is None and mode == "classification":
             outer = StratifiedKFold(n_splits=cv, random_state=random_state)
-        elif group_id is None and mode == 'regression':
+        elif group_id is None and mode == "regression":
             outer = KFold(n_splits=cv, random_state=random_state)
         else:
             outer = GroupKFold(n_splits=cv)
@@ -577,10 +607,9 @@ def main():
     if balance is True:
         from sklearn.utils import compute_class_weight
 
-        class_weights = compute_class_weight(
-            class_weight='balanced', classes=(y), y=y)
-        
-        fit_params = {'sample_weight': class_weights}
+        class_weights = compute_class_weight(class_weight="balanced", classes=(y), y=y)
+
+        fit_params = {"sample_weight": class_weights}
 
     else:
         class_weights = None
@@ -595,183 +624,200 @@ def main():
     if norm_data is True and category_maps is None:
         scaler = StandardScaler()
         trans = ColumnTransformer(
-            remainder='passthrough',
-            transformers=[
-                ('scaling', scaler, np.arange(0, stack.count))
-                ]
-            )
-    
+            remainder="passthrough",
+            transformers=[("scaling", scaler, np.arange(0, stack.count))],
+        )
+
     # one-hot encoding only
     elif norm_data is False and category_maps is not None:
-        enc = OneHotEncoder(handle_unknown='ignore', sparse=False)
-        
+        enc = OneHotEncoder(handle_unknown="ignore", sparse=False)
+
         trans = ColumnTransformer(
-            remainder='passthrough',
-            transformers=[('onehot', enc, stack.categorical)])
-        
+            remainder="passthrough", transformers=[("onehot", enc, stack.categorical)]
+        )
+
     # standardization and one-hot encoding
     elif norm_data is True and category_maps is not None:
         scaler = StandardScaler()
-        enc = OneHotEncoder(handle_unknown='ignore', sparse=False)
-                
+        enc = OneHotEncoder(handle_unknown="ignore", sparse=False)
+
         trans = ColumnTransformer(
-            remainder='passthrough',
+            remainder="passthrough",
             transformers=[
-                ('onehot', enc, stack.categorical),
-                ('scaling', scaler, ~stack.categorical)
-                ]
-            )
+                ("onehot", enc, stack.categorical),
+                ("scaling", scaler, ~stack.categorical),
+            ],
+        )
 
     # combine transformers
-    if norm_data is True or category_maps is not None:    
-        estimator = Pipeline(
-            [('preprocessing', trans),
-             ('estimator', estimator)])
-        
+    if norm_data is True or category_maps is not None:
+        estimator = Pipeline([("preprocessing", trans), ("estimator", estimator)])
+
         param_grid = wrap_named_step(param_grid)
         fit_params = wrap_named_step(fit_params)
-    
+
     if any(param_grid) is True:
         estimator = GridSearchCV(
-            estimator=estimator, param_grid=param_grid,
-            scoring=search_scorer, n_jobs=n_jobs, cv=inner)
+            estimator=estimator,
+            param_grid=param_grid,
+            scoring=search_scorer,
+            n_jobs=n_jobs,
+            cv=inner,
+        )
 
     # estimator training
     gs.message(os.linesep)
-    gs.message(('Fitting model using ' + model_name))
-    
+    gs.message(("Fitting model using " + model_name))
+
     if balance is True and group_id is not None:
         estimator.fit(X, y, groups=group_id, **fit_params)
     elif balance is True and group_id is None:
         estimator.fit(X, y, **fit_params)
     else:
         estimator.fit(X, y)
-    
+
     # message best hyperparameter setup and optionally save using pandas
     if any(param_grid) is True:
         gs.message(os.linesep)
-        gs.message('Best parameters:')
+        gs.message("Best parameters:")
         gs.message(str(estimator.best_params_))
-        
-        if param_file != '':
+
+        if param_file != "":
             param_df = pd.DataFrame(estimator.cv_results_)
             param_df.to_csv(param_file)
-    
+
     # cross-validation
     if cv > 1:
         from sklearn.metrics import classification_report
         from sklearn import metrics
-        
-        if (mode == 'classification' and 
-            cv > np.histogram(y, bins=np.unique(y))[0].min()):
+
+        if (
+            mode == "classification"
+            and cv > np.histogram(y, bins=np.unique(y))[0].min()
+        ):
             gs.message(os.linesep)
-            gs.fatal('Number of cv folds is greater than number of '
-                     'samples in some classes')
-            
+            gs.fatal(
+                "Number of cv folds is greater than number of "
+                "samples in some classes"
+            )
+
         gs.message(os.linesep)
         gs.message("Cross validation global performance measures......:")
 
-        if (mode == 'classification' and len(np.unique(y)) == 2 and
-            all([0, 1] == np.unique(y))):    
-            scoring['roc_auc'] = metrics.roc_auc_score    
-        
+        if (
+            mode == "classification"
+            and len(np.unique(y)) == 2
+            and all([0, 1] == np.unique(y))
+        ):
+            scoring["roc_auc"] = metrics.roc_auc_score
+
         from sklearn.model_selection import cross_val_predict
-        preds = cross_val_predict(estimator, X, y, group_id, cv=outer,
-                                  n_jobs=n_jobs, fit_params=fit_params)
-        
-        test_idx = [test for train, test in outer.split(X, y)]        
-        n_fold = np.zeros((0, ))
-        
+
+        preds = cross_val_predict(
+            estimator, X, y, group_id, cv=outer, n_jobs=n_jobs, fit_params=fit_params
+        )
+
+        test_idx = [test for train, test in outer.split(X, y)]
+        n_fold = np.zeros((0,))
+
         for fold in range(outer.get_n_splits()):
-            n_fold = np.hstack(
-                (n_fold, np.repeat(fold, test_idx[fold].shape[0])))
-        
-        preds = {
-            'y_pred': preds,
-            'y_true': y,
-            'cat': cat,
-            'fold': n_fold
-        }
-        
-        preds = pd.DataFrame(data=preds, 
-                             columns=['y_pred', 'y_true', 'cat', 'fold'])        
+            n_fold = np.hstack((n_fold, np.repeat(fold, test_idx[fold].shape[0])))
+
+        preds = {"y_pred": preds, "y_true": y, "cat": cat, "fold": n_fold}
+
+        preds = pd.DataFrame(data=preds, columns=["y_pred", "y_true", "cat", "fold"])
         gs.message(os.linesep)
-        gs.message('Global cross validation scores...')
+        gs.message("Global cross validation scores...")
         gs.message(os.linesep)
-        gs.message(('Metric \t Mean \t Error'))    
+        gs.message(("Metric \t Mean \t Error"))
 
         for name, func in scoring.items():
             score_mean = (
-                preds.groupby('fold').
-                apply(lambda x: func(x['y_true'], x['y_pred'])).
-                mean())
+                preds.groupby("fold")
+                .apply(lambda x: func(x["y_true"], x["y_pred"]))
+                .mean()
+            )
 
             score_std = (
-                preds.groupby('fold').
-                apply(lambda x: func(x['y_true'], x['y_pred'])).
-                std())
-            
-            gs.message(name + 
-                       '\t' + str(score_mean.round(3)) + 
-                       '\t' + str(score_std.round(3)))
+                preds.groupby("fold")
+                .apply(lambda x: func(x["y_true"], x["y_pred"]))
+                .std()
+            )
 
-        if mode == 'classification':    
+            gs.message(
+                name + "\t" + str(score_mean.round(3)) + "\t" + str(score_std.round(3))
+            )
+
+        if mode == "classification":
             gs.message(os.linesep)
-            gs.message('Cross validation class performance measures......:')
-            
+            gs.message("Cross validation class performance measures......:")
+
             report_str = classification_report(
-                y_true=preds['y_true'], 
-                y_pred=preds['y_pred'], 
+                y_true=preds["y_true"],
+                y_pred=preds["y_pred"],
                 sample_weight=class_weights,
-                output_dict=False)
-            
+                output_dict=False,
+            )
+
             report = classification_report(
-                y_true=preds['y_true'], 
-                y_pred=preds['y_pred'], 
+                y_true=preds["y_true"],
+                y_pred=preds["y_pred"],
                 sample_weight=class_weights,
-                output_dict=True)
+                output_dict=True,
+            )
             report = pd.DataFrame(report)
-            
+
             gs.message(report_str)
-            
-            if classif_file != '':
-                report.to_csv(classif_file, mode='w', index=True)
-                
+
+            if classif_file != "":
+                report.to_csv(classif_file, mode="w", index=True)
+
         # write cross-validation predictions to csv file
-        if preds_file != '':
-            preds.to_csv(preds_file, mode='w', index=False)
-            text_file = open(preds_file + 't', "w")
+        if preds_file != "":
+            preds.to_csv(preds_file, mode="w", index=False)
+            text_file = open(preds_file + "t", "w")
             text_file.write('"Real", "Real", "integer", "integer"')
             text_file.close()
 
     if importances is True:
         from sklearn.inspection import permutation_importance
-        
+
         fimp = permutation_importance(
-            estimator, X, y, scoring=search_scorer, n_repeats=5, n_jobs=n_jobs,
-            random_state=random_state)
+            estimator,
+            X,
+            y,
+            scoring=search_scorer,
+            n_repeats=5,
+            n_jobs=n_jobs,
+            random_state=random_state,
+        )
 
         feature_names = deepcopy(stack.names)
-        feature_names = [i.split('@')[0] for i in feature_names]
+        feature_names = [i.split("@")[0] for i in feature_names]
 
-        fimp = pd.DataFrame({
-            'feature': feature_names,
-            'importance': fimp['importances_mean'],
-            'std': fimp['importances_std']
-        })
+        fimp = pd.DataFrame(
+            {
+                "feature": feature_names,
+                "importance": fimp["importances_mean"],
+                "std": fimp["importances_std"],
+            }
+        )
 
         gs.message(os.linesep)
-        gs.message('Feature importances')
-        gs.message('Feature' + '\t' + 'Score')
-        
-        for index, row in fimp.iterrows():
-            gs.message(row['feature'] + '\t' + str(row['importance']) + '\t' + str(row['std']))
+        gs.message("Feature importances")
+        gs.message("Feature" + "\t" + "Score")
 
-        if fimp_file != '':
+        for index, row in fimp.iterrows():
+            gs.message(
+                row["feature"] + "\t" + str(row["importance"]) + "\t" + str(row["std"])
+            )
+
+        if fimp_file != "":
             fimp.to_csv(fimp_file, index=False)
 
     # save the fitted model
     import joblib
+
     joblib.dump((estimator, y), model_save)
 
 

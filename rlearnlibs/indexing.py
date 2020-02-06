@@ -79,4 +79,4 @@ class LinkedList(object):
     def __getitem__(self, index):
         key = list(self._index.keys())[index]
         return self._index[key]
-    
+
