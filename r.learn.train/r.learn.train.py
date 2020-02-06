@@ -390,6 +390,12 @@ def wrap_named_step(param_grid):
     return param_grid
 
 
+def process_hidden(val):
+    val = re.sub(r"[\(\)]", "", val)
+    val = [int(i.strip()) for i in val.split(";")]
+    return val
+
+
 def main():
     try:
         import sklearn
@@ -461,11 +467,6 @@ def main():
     hyperparams_type["hidden_layer_sizes"] = tuple
     param_grid = deepcopy(hyperparams_type)
     param_grid = dict.fromkeys(param_grid, None)
-
-    def process_hidden(val):
-        val = re.sub(r"[\(\)]", "", val)
-        val = [int(i.strip()) for i in val.split(";")]
-        return val
 
     for key, val in hyperparams.items():
         if "," in val:
