@@ -74,8 +74,10 @@ import os
 import sys
 import grass.script as gs
 import numpy as np
+import tempfile
 from grass.script.utils import get_lib_path
 from grass.pygrass.gis.region import Region
+from grass.pygrass.modules.shortcuts import raster as r
 
 path = get_lib_path(modname="r.learn.ml")
 if path is None:
@@ -83,6 +85,17 @@ if path is None:
 sys.path.append(path)
 
 from raster import RasterStack
+
+
+def string_to_rules(string):
+    # Converts a string to a file for input as a GRASS Rules File
+
+    tmp = gs.tempfile()
+    f = open('%s' % (tmp), 'wt')
+    f.write(string)
+    f.close()
+
+    return tmp
 
 
 def main():
@@ -113,7 +126,7 @@ def main():
         gs.fatal("Need to set probabilities=True if prob_only=True")
 
     # reload fitted model and trainign data
-    estimator, y = joblib.load(model_load)
+    estimator, y, class_labels = joblib.load(model_load)
 
     # define RasterStack
     stack = RasterStack(group=group)
@@ -148,7 +161,20 @@ def main():
             overwrite=gs.overwrite(),
             height=row_incr,
         )
-
+    
+    # assign categories for classification map
+    if class_labels is not None:
+        class_values = np.arange(0, len(class_labels), dtype=np.int)
+                
+        rules = []
+        
+        for val, lab in zip(class_values, class_labels):
+            rules.append(','.join([str(val), lab]))
+        
+        rules = '\n'.join(rules)
+        rules_file = string_to_rules(rules)
+        
+        r.category(map=output, rules=rules_file, separator='comma')
 
 if __name__ == "__main__":
     options, flags = gs.parser()

@@ -544,6 +544,9 @@ def main():
             from sklearn.preprocessing import LabelEncoder
             le = LabelEncoder()
             y = le.fit_transform(y)
+            class_labels = le.classes_
+        else:
+            class_labels = None
 
         # take group id from last column and remove from predictors
         if group_raster != "":
@@ -816,7 +819,7 @@ def main():
     # save the fitted model
     import joblib
 
-    joblib.dump((estimator, y), model_save)
+    joblib.dump((estimator, y, class_labels), model_save)
 
 
 if __name__ == "__main__":

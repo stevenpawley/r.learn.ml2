@@ -919,8 +919,9 @@ class RasterStack(object):
                 fields = fields[0]
 
             X = df.loc[:, df.columns.isin(self.loc.keys())].values
-            y = df.loc[:, fields].values
+            y = np.asarray(df.loc[:, fields].values)            
             cat = np.asarray(df.loc[:, key_col].values)
+            
             return X, y, cat
 
         return df
