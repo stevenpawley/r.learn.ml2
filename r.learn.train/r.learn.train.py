@@ -540,7 +540,7 @@ def main():
         y = y.flatten()  # reshape to 1 dimension
 
         # label encoding
-        if isinstance(y.dtype, (np.object_, np.object, object)):
+        if y.dtype in (np.object_, np.object):
             from sklearn.preprocessing import LabelEncoder
             le = LabelEncoder()
             y = le.fit_transform(y)
