@@ -769,6 +769,19 @@ class RasterStack(object):
 
         return X, y, cat
 
+    @staticmethod
+    def _grass_sql_dtype_to_numpy(dtype):
+
+        grass_vector_dtypes = {
+            "INTEGER": np.int64,
+            "DOUBLE PRECISION": np.float64,
+            "REAL": np.float32,
+            "TEXT": pd.StringDtype(),
+            "DATE": pd.DatetimeIndex,
+        }
+
+        return grass_vector_dtypes[dtype]
+
     def extract_points(self, vect_name, fields, na_rm=True, as_df=False):
         """Samples a list of GRASS rasters using a point dataset.
 
@@ -816,19 +829,29 @@ class RasterStack(object):
         # open grass vector
         with VectorTopo(name=vname, mapset=mapset, mode="r") as points:
 
+            # retrieve key column
             key_col = points.table.key
 
             # read table for all points (irrespective of comp region)
             df = pd.DataFrame(points.table_to_dict()).transpose()
             df_cols = points.table.columns
-            df_cols = [name for (name, dtype) in df_cols.items()]
-            df = df.rename(columns={old: new for old, new in zip(df.columns, df_cols)})
+            df_colnames = [name for (name, dtype) in df_cols.items()]
+            df = df.rename(
+                columns={old: new for old, new in zip(df.columns, df_colnames)}
+            )
             df = df.loc[:, fields + [points.table.key]]
+
+            # set dtypes
             df.loc[:, key_col] = df.loc[:, key_col].astype(pd.Int64Dtype())
 
-            Xs = []
+            for field in fields:
+                df[field] = df[field].astype(
+                    self._grass_sql_dtype_to_numpy(df_cols[field])
+                )
 
             # extract raster data
+            Xs = []
+
             for name, src in self.loc.items():
 
                 # query raster data in comp region

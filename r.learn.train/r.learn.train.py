@@ -410,7 +410,7 @@ def main():
         import pandas as pd
 
     except ImportError:
-        gs.fatal("Pandas is not installed ")
+        gs.fatal("Pandas is not installed")
 
     # parser options
     group = options["group"]
@@ -492,8 +492,6 @@ def main():
     estimator, mode = predefined_estimators(
         model_name, random_state, n_jobs, hyperparams
     )
-    
-    print(estimator)
 
     # remove dict keys that are incompatible for the selected estimator
     estimator_params = estimator.get_params()
@@ -515,7 +513,7 @@ def main():
         gs.warning(model_name + " does not support class weights")
         balance = False
 
-    if mode == "classification" and balance is True:
+    if mode == "regression" and balance is True:
         gs.warning("Balancing of class weights is only possible for classification")
         balance = False
 
@@ -542,9 +540,8 @@ def main():
         y = y.flatten()  # reshape to 1 dimension
 
         # label encoding
-        if y.dtype in [np.object_, np.object]:
+        if isinstance(y.dtype, (np.object_, np.object, object)):
             from sklearn.preprocessing import LabelEncoder
-
             le = LabelEncoder()
             y = le.fit_transform(y)
 
