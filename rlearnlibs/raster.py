@@ -773,14 +773,14 @@ class RasterStack(object):
     def _grass_sql_dtype_to_numpy(dtype):
 
         grass_vector_dtypes = {
-            "INTEGER": np.int64,
-            "DOUBLE PRECISION": np.float64,
-            "REAL": np.float32,
-            "TEXT": pd.StringDtype(),
-            "DATE": pd.DatetimeIndex,
+            "integer": np.int64,
+            "double precision": np.float64,
+            "real": np.float32,
+            "text": pd.StringDtype(),
+            "date": pd.DatetimeIndex,
         }
 
-        return grass_vector_dtypes[dtype]
+        return grass_vector_dtypes[dtype.lower()]
 
     def extract_points(self, vect_name, fields, na_rm=True, as_df=False):
         """Samples a list of GRASS rasters using a point dataset.
