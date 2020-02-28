@@ -19,6 +19,7 @@ from grass.pygrass.vector import VectorTopo
 from indexing import ExtendedDict, LinkedList
 from meta import Meta
 
+
 class RasterStack(Meta):
     def __init__(self, rasters=None, group=None):
         """A RasterStack enables a collection of raster layers to be bundled
@@ -919,9 +920,9 @@ class RasterStack(Meta):
                 fields = fields[0]
 
             X = df.loc[:, df.columns.isin(self.loc.keys())].values
-            y = np.asarray(df.loc[:, fields].values)            
+            y = np.asarray(df.loc[:, fields].values)
             cat = np.asarray(df.loc[:, key_col].values)
-            
+
             return X, y, cat
 
         return df
