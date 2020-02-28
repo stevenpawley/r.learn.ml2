@@ -17,10 +17,10 @@ from grass.pygrass.raster.buffer import Buffer
 from grass.pygrass.utils import get_mapset_raster, get_raster_for_points
 from grass.pygrass.vector import VectorTopo
 from indexing import ExtendedDict, LinkedList
-from meta import Meta
+from statistics import StatisticsMixin
 
 
-class RasterStack(Meta):
+class RasterStack(StatisticsMixin):
     def __init__(self, rasters=None, group=None):
         """A RasterStack enables a collection of raster layers to be bundled
         into a single RasterStack object.
