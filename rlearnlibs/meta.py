@@ -3,8 +3,8 @@ import numpy as np
 from subprocess import PIPE
 from grass.pygrass.modules.shortcuts import raster as r
 
-class Meta(object):
 
+class Meta(object):
     def covar(self, correlation=False):
         """
         Outputs a covariance or correlation matrix for the layers within the RasterStack object
@@ -22,14 +22,14 @@ class Meta(object):
         """
 
         if correlation is True:
-            flags = 'r'
+            flags = "r"
         else:
-            flags = ''
+            flags = ""
 
         corr = r.covar(map=self.names, flags=flags, stdout_=PIPE)
         corr = corr.outputs.stdout.split(os.linesep)[1:-1]
         corr = [i.strip() for i in corr]
-        corr = [i.split(' ') for i in corr]
+        corr = [i.split(" ") for i in corr]
         corr = np.asarray(corr, dtype=np.float32)
 
         np.fill_diagonal(corr, np.nan)
