@@ -1,6 +1,4 @@
 #!/usr/bin/env python
-from __future__ import absolute_import, print_function
-
 import os
 from subprocess import PIPE
 
@@ -17,7 +15,7 @@ from grass.pygrass.raster.buffer import Buffer
 from grass.pygrass.utils import get_mapset_raster, get_raster_for_points
 from grass.pygrass.vector import VectorTopo
 from indexing import ExtendedDict, LinkedList
-from statistics import StatisticsMixin
+from stats import StatisticsMixin
 
 
 class RasterStack(StatisticsMixin):
@@ -299,6 +297,74 @@ class RasterStack(StatisticsMixin):
             new_raster = RasterStack(rasters=[i for i in subset_names])
 
             return new_raster
+    
+    def read2(self, row=None, window=None):
+        """Read data from RasterStack as a masked 3D numpy array.
+        
+        Notes
+        -----
+        Read an entire RasterStack into a numpy array. If row or window is 
+        supplied, then a single row, or a range of rows from 
+        window = (start_row, end_row) is read into an array.
+
+        Parameters
+        ----------
+        row : int (opt)
+            Integer representing the index of a single row of a raster to read.
+
+        window : tuple (opt)
+            Tuple of integers representing the start and end numbers of rows to
+            read as a single block of rows.
+
+        Returns
+        -------
+        
+        data : ndarray
+            3d masked numpy array containing data from RasterStack rasters.
+        """
+        reg = Region()
+
+        # create numpy array to receive data based on row/window/dataset size
+        if window:
+            reg.set_bbox(window)
+            reg.write()
+            reg.set_raster_region()
+            shape = (self.count, reg.rows, reg.cols)
+
+        elif row:
+            shape = (self.count, 1, reg.cols)
+
+        else:
+            shape = (self.count, reg.rows, reg.cols)
+
+        data = np.zeros(shape)
+
+        # read from each RasterRow object
+        for band, (name, src) in enumerate(self.layers.items()):
+            try:
+                f = RasterRow(src.fullname())
+                f.open('r')
+
+                if row:
+                    data[band, 0, :] = f[row]
+                else:
+                    data[band, :, :] = np.asarray(f)
+                
+                f.close()
+                    
+            except:
+                gs.fatal("Cannot read from raster {0}".format(src.fullname))
+
+        # mask array
+        data = np.ma.masked_equal(data, self._cell_nodata)
+        data = np.ma.masked_invalid(data)
+
+        if isinstance(data.mask, np.bool_):
+            mask_arr = np.empty(data.shape, dtype="bool")
+            mask_arr[:] = False
+            data.mask = mask_arr
+
+        return data
 
     def read(self, row=None, window=None):
         """Read data from RasterStack as a masked 3D numpy array.

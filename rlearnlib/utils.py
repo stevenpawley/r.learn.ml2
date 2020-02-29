@@ -1,11 +1,9 @@
 #!/usr/bin/env python
 # -- coding: utf-8 --
 
-"""The module rlearn_utils contains functinons to assist
+"""The utils module contains functions to assist
 with passing pre-defined scikit learn classifiers
 and other utilities for loading/saving training data."""
-
-from __future__ import absolute_import
 
 import grass.script as gs
 import numpy as np

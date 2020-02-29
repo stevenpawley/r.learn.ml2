@@ -2,9 +2,9 @@ MODULE_TOPDIR = ../..
 
 PGM = r.learn.ml
 
-SUBDIRS = rlearnlibs \
-	  r.learn.train \
-	  r.learn.predict
+SUBDIRS = rlearnlib \
+	  	  r.learn.train \
+	  	  r.learn.predict \
 	  
 include $(MODULE_TOPDIR)/include/Make/Dir.make
 

@@ -1,5 +1,8 @@
 #!/usr/bin/env python
-from __future__ import absolute_import, print_function
+# -- coding: utf-8 --
+
+"""The statistics module contains simple wrappers around GRASS modules for statistical functions
+on raster maps"""
 
 import os
 import numpy as np
@@ -64,7 +67,7 @@ class StatisticsMixin(object):
             mapx=x, mapy=y, flags="g", stdout_=PIPE
         ).outputs.stdout.strip()
 
-        regr = parse_key_val(repr, sep="=")
+        regr = parse_key_val(regr, sep="=")
 
         return regr
 
@@ -106,6 +109,6 @@ class StatisticsMixin(object):
             stdout_=PIPE,
         ).outputs.stdout.strip()
 
-        regr = parse_key_val(repr, sep="=")
+        regr = parse_key_val(regr, sep="=")
 
         return regr
