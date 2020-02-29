@@ -135,7 +135,7 @@ def main():
     # calculate chunksize
     region = Region()
     row = stack.read(1)
-    rowsize_mg = row.nbytes * 1e-6
+    rowsize_mg = row.nbytes / 1000000
     row_incr = int(float(chunksize) / float(rowsize_mg))
 
     # do not read by increments if increment > n_rows

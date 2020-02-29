@@ -298,7 +298,7 @@ class RasterStack(StatisticsMixin):
 
             return new_raster
     
-    def read2(self, row=None, window=None):
+    def read_bbox(self, row=None, bbox=None):
         """Read data from RasterStack as a masked 3D numpy array.
         
         Notes
@@ -312,9 +312,8 @@ class RasterStack(StatisticsMixin):
         row : int (opt)
             Integer representing the index of a single row of a raster to read.
 
-        window : tuple (opt)
-            Tuple of integers representing the start and end numbers of rows to
-            read as a single block of rows.
+        bbox : bbox object.
+            bbox to read raster within.
 
         Returns
         -------
@@ -325,8 +324,8 @@ class RasterStack(StatisticsMixin):
         reg = Region()
 
         # create numpy array to receive data based on row/window/dataset size
-        if window:
-            reg.set_bbox(window)
+        if bbox:
+            reg.set_bbox(bbox)
             reg.write()
             reg.set_raster_region()
             shape = (self.count, reg.rows, reg.cols)
