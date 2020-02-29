@@ -10,6 +10,7 @@ from grass.pygrass.modules.shortcuts import imagery as im
 from grass.pygrass.modules.shortcuts import raster as r
 from grass.pygrass.modules.shortcuts import vector as v
 from grass.pygrass.modules.shortcuts import general as g
+from grass.pygrass.modules.grid.split import split_region_tiles
 from grass.pygrass.raster import RasterRow, numpy2raster
 from grass.pygrass.raster.buffer import Buffer
 from grass.pygrass.utils import get_mapset_raster, get_raster_for_points
@@ -298,7 +299,7 @@ class RasterStack(StatisticsMixin):
 
             return new_raster
     
-    def read2(self, row=None, window=None):
+    def read(self, row=None, window=None):
         """Read data from RasterStack as a masked 3D numpy array.
         
         Notes
@@ -352,77 +353,6 @@ class RasterStack(StatisticsMixin):
                 
                 f.close()
                     
-            except:
-                gs.fatal("Cannot read from raster {0}".format(src.fullname))
-
-        # mask array
-        data = np.ma.masked_equal(data, self._cell_nodata)
-        data = np.ma.masked_invalid(data)
-
-        if isinstance(data.mask, np.bool_):
-            mask_arr = np.empty(data.shape, dtype="bool")
-            mask_arr[:] = False
-            data.mask = mask_arr
-
-        return data
-
-    def read(self, row=None, window=None):
-        """Read data from RasterStack as a masked 3D numpy array.
-        
-        Notes
-        -----
-        Read an entire RasterStack into a numpy array. If row or window is 
-        supplied, then a single row, or a range of rows from 
-        window = (start_row, end_row) is read into an array.
-
-        Parameters
-        ----------
-        row : int (opt)
-            Integer representing the index of a single row of a raster to read.
-
-        window : tuple (opt)
-            Tuple of integers representing the start and end numbers of rows to
-            read as a single block of rows.
-
-        Returns
-        -------
-        
-        data : ndarray
-            3d masked numpy array containing data from RasterStack rasters.
-        """
-
-        reg = Region()
-
-        # create numpy array to receive data based on row/window/dataset size
-        if window:
-            row_start, row_stop = window
-            width = reg.cols
-            height = abs(row_stop - row_start)
-            shape = (self.count, height, width)
-
-        elif row:
-            row_start = row
-            row_stop = row + 1
-            height = 1
-            shape = (self.count, height, reg.cols)
-
-        else:
-            shape = (self.count, reg.rows, reg.cols)
-
-        data = np.zeros(shape)
-
-        if row or window:
-            rowincrs = [i for i in range(row_start, row_stop)]
-
-        # read from each RasterRow object
-        for band, (name, src) in enumerate(self.layers.items()):
-            try:
-                with RasterRow(src.fullname()) as f:
-                    if row or window:
-                        for i, row in enumerate(rowincrs):
-                            data[band, i, :] = f[row]
-                    else:
-                        data[band, :, :] = np.asarray(f)
             except:
                 gs.fatal("Cannot read from raster {0}".format(src.fullname))
 
@@ -578,7 +508,7 @@ class RasterStack(StatisticsMixin):
 
         return result
 
-    def predict(self, estimator, output, height=None, overwrite=False):
+    def predict(self, estimator, output, block_shape=(100, 100), overwrite=False):
         """Prediction method for RasterStack class.
 
         Parameters
@@ -589,20 +519,19 @@ class RasterStack(StatisticsMixin):
         output : str
             Output name for prediction raster.
             
-        height : int (opt).
-            Number of raster rows to pass to estimator at one time. If not
-            specified then the entire raster is read into memory.
+        block_shape : tuple (opt).
+            Tuple of (n_rows, n_cols) to pass to estimator at one time
             
         overwrite : bool (opt). Default is False
             Option to overwrite an existing raster.
         """
 
         reg = Region()
+        rows, cols = block_shape
         func = self._pred_fun
 
         # determine dtype
-        test_window = list(self.row_windows(height=1))[0]
-        img = self.read(window=test_window)
+        img = self.read(row=1)
         result = func(img, estimator)
 
         try:
@@ -629,39 +558,23 @@ class RasterStack(StatisticsMixin):
 
         if len(indexes) > 1:
             self._predict_multi(
-                estimator, reg, indexes, indexes, height, func, output, overwrite
+                estimator, reg, indexes, indexes, block_shape, func, output, overwrite
             )
-        else:
-            if height is not None:
+        else:            
+            windows = split_region_tiles(reg, width=cols, height=rows, overlap=0)
+            windows = [item for sublist in windows for item in sublist]
+            n_windows = len(windows)
+            data_gen = ((wi, self.read(window=window)) for wi, window in enumerate(windows))
+            output_tiles = []
 
-                with RasterRow(
-                    output, mode="w", mtype=mtype, overwrite=overwrite
-                ) as dst:
-                    n_windows = len([i for i in self.row_windows(height=height)])
-
-                    data_gen = (
-                        (wi, self.read(window=window))
-                        for wi, window in enumerate(self.row_windows(height=height))
-                    )
-
-                    for wi, arr in data_gen:
-                        gs.percent(wi, n_windows, 1)
-                        result = func(arr, estimator)
-                        result = np.ma.filled(result, nodata)
-
-                        # writing data to GRASS raster row-by-row
-                        for i in range(result.shape[1]):
-                            newrow = Buffer((reg.cols,), mtype=mtype)
-                            newrow[:] = result[0, i, :]
-                            dst.put_row(newrow)
-
-            else:
-                arr = self.read()
+            for wi, arr in data_gen:
+                gs.percent(wi, n_windows, 1)
                 result = func(arr, estimator)
                 result = np.ma.filled(result, nodata)
-                numpy2raster(
-                    result[0, :, :], mtype=mtype, rastname=output, overwrite=overwrite
-                )
+
+                output_name = 'tmp' + str(wi)
+                output_tiles.append(output_name)
+                numpy2raster(result[0, :, :], mtype, output_name)
 
         return None
 

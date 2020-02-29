@@ -148,7 +148,7 @@ def main():
         stack.predict(
             estimator=estimator,
             output=output,
-            height=row_incr,
+            block_shape=(1000,1000),
             overwrite=gs.overwrite(),
         )
 
