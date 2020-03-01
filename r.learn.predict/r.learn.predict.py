@@ -79,9 +79,9 @@ from grass.script.utils import get_lib_path
 from grass.pygrass.gis.region import Region
 from grass.pygrass.modules.shortcuts import raster as r
 
-path = get_lib_path(modname="r.learn.ml")
+path = get_lib_path(modname='r.learn.ml')
 if path is None:
-    gs.fatal("Not able to find the r.learn library directory")
+    gs.fatal('Not able to find the r.learn library directory')
 sys.path.append(path)
 
 from raster import RasterStack
@@ -103,27 +103,27 @@ def main():
         import sklearn
         import joblib
 
-        if sklearn.__version__ < "0.20":
-            gs.fatal("Scikit learn 0.20 or newer is required")
+        if sklearn.__version__ < '0.22':
+            gs.fatal('Scikit learn 0.22 or newer is required')
 
     except ImportError:
-        gs.fatal("Scikit learn 0.20 or newer is not installed")
+        gs.fatal('Scikit learn 0.22 or newer is not installed')
 
     # parser options
-    group = options["group"]
-    output = options["output"]
-    model_load = options["load_model"]
-    probability = flags["p"]
-    prob_only = flags["z"]
-    chunksize = int(options["chunksize"])
+    group = options['group']
+    output = options['output']
+    model_load = options['load_model']
+    probability = flags['p']
+    prob_only = flags['z']
+    chunksize = int(options['chunksize'])
 
     # remove @ from output in case overwriting result
-    if "@" in output:
-        output = output.split("@")[0]
+    if '@' in output:
+        output = output.split('@')[0]
 
     # check that probabilities=True if prob_only=True
     if prob_only is True and probability is False:
-        gs.fatal("Need to set probabilities=True if prob_only=True")
+        gs.fatal('Need to set probabilities=True if prob_only=True')
 
     # reload fitted model and trainign data
     estimator, y, class_labels = joblib.load(model_load)
@@ -144,7 +144,7 @@ def main():
 
     # prediction
     if prob_only is False:
-        gs.message("Predicting classification/regression raster...")
+        gs.message('Predicting classification/regression raster...')
         stack.predict(
             estimator=estimator,
             output=output,
@@ -153,7 +153,7 @@ def main():
         )
 
     if probability is True:
-        gs.message("Predicting class probabilities...")
+        gs.message('Predicting class probabilities...')
         stack.predict_proba(
             estimator=estimator,
             output=output,
@@ -176,6 +176,6 @@ def main():
         
         r.category(map=output, rules=rules_file, separator='comma')
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     options, flags = gs.parser()
     main()

@@ -64,7 +64,7 @@ class RasterStack(StatisticsMixin):
             gs.fatal('arguments "rasters" and "group" are mutually exclusive')
 
         if group:
-            map_list = im.group(group=group, flags=["l", "g"], quiet=True, stdout_=PIPE)
+            map_list = im.group(group=group, flags=['l', 'g'], quiet=True, stdout_=PIPE)
             rasters = map_list.outputs.stdout.split(os.linesep)[:-1]
 
         self.layers = rasters  # call property
@@ -93,7 +93,7 @@ class RasterStack(StatisticsMixin):
         for i in label:
 
             if i in self.names is False:
-                raise KeyError("layername not present in Raster object")
+                raise KeyError('layername not present in Raster object')
             else:
                 subset_layers.append(self.loc[i])
 
@@ -167,14 +167,14 @@ class RasterStack(StatisticsMixin):
         self.mtypes = {}
 
         # split raster name from mapset name
-        raster_names = [i.split("@")[0] for i in mapnames]
+        raster_names = [i.split('@')[0] for i in mapnames]
         mapset_names = [get_mapset_raster(i) for i in mapnames]
 
         if None in mapset_names:
             missing_idx = mapset_names.index(None)
             missing_rasters = raster_names[missing_idx]
             gs.fatal(
-                "GRASS GIS raster(s) {x} is not found in any mapsets".format(
+                'GRASS GIS raster(s) {x} is not found in any mapsets'.format(
                     x=missing_rasters
                 )
             )
@@ -186,16 +186,16 @@ class RasterStack(StatisticsMixin):
 
                 if src.exist() is True:
 
-                    ras_name = src.name.split("@")[0]  # name sans mapset
+                    ras_name = src.name.split('@')[0]  # name sans mapset
                     full_name = src.name_mapset()  # name with mapset
-                    valid_name = ras_name.replace(".", "_")
+                    valid_name = ras_name.replace('.', '_')
 
                     # grass gis raster could have same name if in diff mapset
                     if valid_name in list(self.layers.keys()):
                         raise ValueError(
-                            "Cannot append map {name} to the "
-                            "RasterStack because a map with the same name "
-                            "already exists".format(name=ras_name)
+                            'Cannot append map {name} to the '
+                            'RasterStack because a map with the same name '
+                            'already exists'.format(name=ras_name)
                         )
 
                     self.mtypes.update({full_name: src.mtype})
@@ -203,7 +203,7 @@ class RasterStack(StatisticsMixin):
                     setattr(self, valid_name, src)
 
                 else:
-                    gs.fatal("GRASS raster map " + r + " does not exist")
+                    gs.fatal('GRASS raster map ' + r + ' does not exist')
 
     @property
     def categorical(self):
@@ -226,7 +226,7 @@ class RasterStack(StatisticsMixin):
                 indexes.append(self.names.index(n))
 
             except ValueError:
-                gs.fatal("Category map {0} not in the imagery group".format(n))
+                gs.fatal('Category map {0} not in the imagery group'.format(n))
 
         self._categorical_idx = indexes
 
@@ -297,20 +297,33 @@ class RasterStack(StatisticsMixin):
             new_raster = RasterStack(rasters=[i for i in subset_names])
 
             return new_raster
-    
-    def read_bbox(self, row=None, bbox=None):
+
+    def read(self, row=None, rows=None, bbox=None):
         """Read data from RasterStack as a masked 3D numpy array.
         
         Notes
         -----
-        Read an entire RasterStack into a numpy array. If row or window is 
-        supplied, then a single row, or a range of rows from 
-        window = (start_row, end_row) is read into an array.
+        Read an entire RasterStack into a numpy array. 
+        
+        If the row parameter is used then a single row is read into a 3d numpy array.
+        
+        If the rows parameter is used, then a range of rows from (start_row, end_row) is read
+        into a 3d numpy array.
+
+        If the bbox parameter is used, then a bbox is read into a 3d numpy array. Note that this
+        temporarily changes the GRASS region settings.
+
+        If no additional arguments are supplied, then all of the maps within the RasterStack are
+        read into a 3d numpy array (obeying the GRASS region settings).
 
         Parameters
         ----------
         row : int (opt)
             Integer representing the index of a single row of a raster to read.
+
+        rows : tuple (opt)
+            Tuple of integers representing the start and end numbers of rows to
+            read as a single block of rows.
 
         bbox : bbox object.
             bbox to read raster within.
@@ -321,83 +334,22 @@ class RasterStack(StatisticsMixin):
         data : ndarray
             3d masked numpy array containing data from RasterStack rasters.
         """
+
         reg = Region()
 
         # create numpy array to receive data based on row/window/dataset size
-        if bbox:
+        if rows:
+            row_start, row_stop = rows
+            width = reg.cols
+            height = abs(row_stop - row_start)
+            shape = (self.count, height, width)
+
+        elif bbox:
+            old_reg = deepcopy(reg)
             reg.set_bbox(bbox)
             reg.write()
             reg.set_raster_region()
             shape = (self.count, reg.rows, reg.cols)
-
-        elif row:
-            shape = (self.count, 1, reg.cols)
-
-        else:
-            shape = (self.count, reg.rows, reg.cols)
-
-        data = np.zeros(shape)
-
-        # read from each RasterRow object
-        for band, (name, src) in enumerate(self.layers.items()):
-            try:
-                f = RasterRow(src.fullname())
-                f.open('r')
-
-                if row:
-                    data[band, 0, :] = f[row]
-                else:
-                    data[band, :, :] = np.asarray(f)
-                
-                f.close()
-                    
-            except:
-                gs.fatal("Cannot read from raster {0}".format(src.fullname))
-
-        # mask array
-        data = np.ma.masked_equal(data, self._cell_nodata)
-        data = np.ma.masked_invalid(data)
-
-        if isinstance(data.mask, np.bool_):
-            mask_arr = np.empty(data.shape, dtype="bool")
-            mask_arr[:] = False
-            data.mask = mask_arr
-
-        return data
-
-    def read(self, row=None, window=None):
-        """Read data from RasterStack as a masked 3D numpy array.
-        
-        Notes
-        -----
-        Read an entire RasterStack into a numpy array. If row or window is 
-        supplied, then a single row, or a range of rows from 
-        window = (start_row, end_row) is read into an array.
-
-        Parameters
-        ----------
-        row : int (opt)
-            Integer representing the index of a single row of a raster to read.
-
-        window : tuple (opt)
-            Tuple of integers representing the start and end numbers of rows to
-            read as a single block of rows.
-
-        Returns
-        -------
-        
-        data : ndarray
-            3d masked numpy array containing data from RasterStack rasters.
-        """
-
-        reg = Region()
-
-        # create numpy array to receive data based on row/window/dataset size
-        if window:
-            row_start, row_stop = window
-            width = reg.cols
-            height = abs(row_stop - row_start)
-            shape = (self.count, height, width)
 
         elif row:
             row_start = row
@@ -410,29 +362,34 @@ class RasterStack(StatisticsMixin):
 
         data = np.zeros(shape)
 
-        if row or window:
+        if row or rows:
             rowincrs = [i for i in range(row_start, row_stop)]
 
         # read from each RasterRow object
         for band, (name, src) in enumerate(self.layers.items()):
             try:
                 with RasterRow(src.fullname()) as f:
-                    if row or window:
+                    if row or rows:
                         for i, row in enumerate(rowincrs):
                             data[band, i, :] = f[row]
                     else:
                         data[band, :, :] = np.asarray(f)
             except:
-                gs.fatal("Cannot read from raster {0}".format(src.fullname))
+                gs.fatal('Cannot read from raster {0}'.format(src.fullname))
 
         # mask array
         data = np.ma.masked_equal(data, self._cell_nodata)
         data = np.ma.masked_invalid(data)
 
         if isinstance(data.mask, np.bool_):
-            mask_arr = np.empty(data.shape, dtype="bool")
+            mask_arr = np.empty(data.shape, dtype='bool')
             mask_arr[:] = False
             data.mask = mask_arr
+
+        # restore region
+        if bbox:
+            old_reg.write()
+            old_reg.set_raster_region()
 
         return data
 
@@ -606,10 +563,10 @@ class RasterStack(StatisticsMixin):
 
         try:
             np.finfo(result.dtype)
-            mtype = "FCELL"
+            mtype = 'FCELL'
             nodata = np.nan
         except:
-            mtype = "CELL"
+            mtype = 'CELL'
             nodata = -2147483648
 
         # determine whether multi-target
@@ -634,7 +591,7 @@ class RasterStack(StatisticsMixin):
             if height is not None:
 
                 with RasterRow(
-                    output, mode="w", mtype=mtype, overwrite=overwrite
+                    output, mode='w', mtype=mtype, overwrite=overwrite
                 ) as dst:
                     n_windows = len([i for i in self.row_windows(height=height)])
 
@@ -721,9 +678,9 @@ class RasterStack(StatisticsMixin):
             dst = []
 
             for i, label in enumerate(class_labels):
-                rastername = output + "_" + str(label)
+                rastername = output + '_' + str(label)
                 dst.append(RasterRow(rastername))
-                dst[i].open("w", mtype="FCELL", overwrite=overwrite)
+                dst[i].open('w', mtype='FCELL', overwrite=overwrite)
 
             # create data reader generator
             n_windows = len([i for i in self.row_windows(height=height)])
@@ -744,7 +701,7 @@ class RasterStack(StatisticsMixin):
                     # write multiple features to GRASS GIS rasters
                     for i, arr_index in enumerate(indexes):
                         for row in range(result.shape[1]):
-                            newrow = Buffer((region.cols,), mtype="FCELL")
+                            newrow = Buffer((region.cols,), mtype='FCELL')
                             newrow[:] = result[arr_index, row, :]
                             dst[i].put_row(newrow)
             else:
@@ -755,12 +712,12 @@ class RasterStack(StatisticsMixin):
                 for i, arr_index in enumerate(indexes):
                     numpy2raster(
                         result[arr_index, :, :],
-                        mtype="FCELL",
+                        mtype='FCELL',
                         rastname=rastername[i],
                         overwrite=overwrite,
                     )
         except:
-            gs.fatal("Error in raster prediction")
+            gs.fatal('Error in raster prediction')
 
         finally:
             if height is not None:
@@ -805,14 +762,14 @@ class RasterStack(StatisticsMixin):
 
         data = r.stats(
             input=[response] + self.names,
-            separator="pipe",
-            flags=["n", "g"],
+            separator='pipe',
+            flags=['n', 'g'],
             stdout_=PIPE,
         ).outputs.stdout
 
         data = data.split(os.linesep)[:-1]
-        data = [i.split("|") for i in data]
-        data = np.asarray(data).astype("float32")
+        data = [i.split('|') for i in data]
+        data = np.asarray(data).astype('float32')
 
         # remove x,y columns from array indexes 1 and 2
         data = data[:, 2:]
@@ -821,14 +778,14 @@ class RasterStack(StatisticsMixin):
         X = data[:, 1:]
 
         if (y % 1).all() == 0:
-            y = y.astype("int")
+            y = y.astype('int')
 
         cat = np.arange(0, y.shape[0])
 
         if as_df is True:
             data = pd.DataFrame(
                 data=np.column_stack((cat, data)),
-                columns=["cat"] + [response] + self.names,
+                columns=['cat'] + [response] + self.names,
             )
 
             return data
@@ -839,11 +796,11 @@ class RasterStack(StatisticsMixin):
     def _grass_sql_dtype_to_numpy(dtype):
 
         grass_vector_dtypes = {
-            "integer": np.int64,
-            "double precision": np.float64,
-            "real": np.float32,
-            "text": pd.StringDtype(),
-            "date": pd.DatetimeIndex,
+            'integer': np.int64,
+            'double precision': np.float64,
+            'real': np.float32,
+            'text': pd.StringDtype(),
+            'date': pd.DatetimeIndex,
         }
 
         return grass_vector_dtypes[dtype.lower()]
@@ -883,17 +840,17 @@ class RasterStack(StatisticsMixin):
         if isinstance(fields, str):
             fields = [fields]
 
-        vname = vect_name.split("@")[0]
+        vname = vect_name.split('@')[0]
 
         try:
-            mapset = vect_name.split("@")[1]
+            mapset = vect_name.split('@')[1]
         except IndexError:
-            mapset = g.mapset(flags="p", stdout_=PIPE).outputs.stdout.split(os.linesep)[
+            mapset = g.mapset(flags='p', stdout_=PIPE).outputs.stdout.split(os.linesep)[
                 0
             ]
 
         # open grass vector
-        with VectorTopo(name=vname, mapset=mapset, mode="r") as points:
+        with VectorTopo(name=vname, mapset=mapset, mode='r') as points:
 
             # retrieve key column
             key_col = points.table.key
@@ -924,16 +881,16 @@ class RasterStack(StatisticsMixin):
                 rast_data = v.what_rast(
                     map=vect_name,
                     raster=src.fullname(),
-                    flags="p",
+                    flags='p',
                     quiet=True,
                     stdout_=PIPE,
                 ).outputs.stdout
 
                 rast_data = rast_data.split(os.linesep)[:-1]
 
-                src.open("r")
+                src.open('r')
 
-                if src.mtype == "CELL":
+                if src.mtype == 'CELL':
                     nodata = self._cell_nodata
                     dtype = pd.Int64Dtype()
                 else:
@@ -942,14 +899,14 @@ class RasterStack(StatisticsMixin):
 
                 X = np.asarray(
                     [
-                        k.split("|")[1] if k.split("|")[1] != "*" else nodata
+                        k.split('|')[1] if k.split('|')[1] != '*' else nodata
                         for k in rast_data
                     ]
                 )
 
-                cat = np.asarray([int(k.split("|")[0]) for k in rast_data])
+                cat = np.asarray([int(k.split('|')[0]) for k in rast_data])
 
-                if src.mtype == "CELL":
+                if src.mtype == 'CELL':
                     X = [int(i) for i in X]
                 else:
                     X = [float(i) for i in X]
@@ -975,8 +932,8 @@ class RasterStack(StatisticsMixin):
         # remove samples containing NaNs
         if na_rm is True:
             gs.message(
-                "Removing samples with NaN values in the "
-                + "raster feature variables..."
+                'Removing samples with NaN values in the '
+                + 'raster feature variables...'
             )
             df = df.dropna()
 
@@ -1015,7 +972,7 @@ class RasterStack(StatisticsMixin):
         # convert to dataframe
         df = pd.DataFrame(
             np.column_stack((xs.flatten(), ys.flatten(), arr)),
-            columns=["x", "y"] + self.names,
+            columns=['x', 'y'] + self.names,
         )
 
         # set nodata values to nan
