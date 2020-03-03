@@ -14,7 +14,7 @@ from grass.pygrass.raster import RasterRow, numpy2raster
 from grass.pygrass.raster.buffer import Buffer
 from grass.pygrass.utils import get_mapset_raster, get_raster_for_points
 from grass.pygrass.vector import VectorTopo
-from indexing import ExtendedDict, LinkedList
+from indexing import _LocIndexer, _ILocIndexer
 from stats import StatisticsMixin
 
 
@@ -50,8 +50,8 @@ class RasterStack(StatisticsMixin):
             Number of RasterRow objects within the RasterStack.
         """
 
-        self.loc = ExtendedDict(self)  # label-based indexing
-        self.iloc = LinkedList(self, self.loc)  # integer-based indexing
+        self.loc = _LocIndexer(self)
+        self.iloc = _ILocIndexer(self, self.loc)
 
         # key, value pairs of full name and GRASS data type
         self.mtypes = {}
@@ -80,27 +80,24 @@ class RasterStack(StatisticsMixin):
             
         Returns
         -------
-        RasterStack
-            A new RasterStack object only containing the subset of layers 
-            specified in the label argument.
+        A single grass.pygrass.raster.RasterRow object, or a RasterStack if 
+        multiple labels are selected.
         """
 
         if isinstance(label, str):
-            label = [label]
+            selected = self.loc[label]
 
-        subset_layers = []
+        else:
+            selected = []
+            for i in label:
+                if i in self.names is False:
+                    raise KeyError('layername not present in Raster object')
+                else:
+                    selected.append(self.loc[i].fullname())
 
-        for i in label:
+            selected = RasterStack(selected)
 
-            if i in self.names is False:
-                raise KeyError('layername not present in Raster object')
-            else:
-                subset_layers.append(self.loc[i])
-
-        subset_raster = RasterStack(subset_layers)
-        subset_raster.rename({old: new for old, new in zip(subset_raster.names, label)})
-
-        return subset_raster
+        return selected
 
     def __setitem__(self, key, value):
         """Replace a RasterLayer within the Raster object with a new 
@@ -125,7 +122,7 @@ class RasterStack(StatisticsMixin):
         """Iterate over grass.pygrass.raster.RasterRow objects.
         """
         return iter(self.loc.items())
-
+    
     @property
     def names(self):
         """Return the names of the grass.pygrass.raster.RasterRow objects in 
@@ -161,8 +158,8 @@ class RasterStack(StatisticsMixin):
         for name in list(self.layers.keys()):
             delattr(self, name)
 
-        self.loc = ExtendedDict(self)
-        self.iloc = LinkedList(self, self.loc)
+        self.loc = _LocIndexer(self)
+        self.iloc = _ILocIndexer(self, self.loc)
         self.count = len(mapnames)
         self.mtypes = {}
 

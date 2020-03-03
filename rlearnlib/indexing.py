@@ -1,20 +1,25 @@
+
+
 try:
     from collections.abc import Mapping
 except ImportError:
     from collections import Mapping
 
 from collections import OrderedDict
+import raster
 
-
-class ExtendedDict(Mapping):
+class _LocIndexer(Mapping):
     """
-    Dict that can return based on multiple keys
+    Access raster maps by using a label
+    
+    Represents a structure similar to a dict, but can return values using a
+    list of keys (not just a single key)
 
-    Args
-    ---
-    parent : Raster object to store RasterLayer indexing
+    Parameters
+    ----------
+    parent : pyspatialml.Raster
         Requires to parent Raster object in order to setattr when
-        changes in the dict, reflecting changes in the RasterLayers occur
+        changes in the dict, reflecting changes in the RasterLayers occur.
     """
 
     def __init__(self, parent, *args, **kw):
@@ -23,9 +28,11 @@ class ExtendedDict(Mapping):
 
     def __getitem__(self, keys):
         if isinstance(keys, str):
-            return self._dict[keys]
-        return [self._dict[i] for i in keys]
-
+            selected = self._dict[keys]
+        else:
+            selected = [self._dict[i] for i in keys]    
+        return selected
+    
     def __str__(self):
         return str(self._dict)
 
@@ -45,22 +52,37 @@ class ExtendedDict(Mapping):
         return pop
 
 
-class LinkedList(object):
+class _ILocIndexer(object):
     """
-    Provides integer-based indexing of a ExtendedDict
+    Access raster maps using integer-based indexing
 
-    Args
-    ---
-    parent : Raster object to store RasterLayer indexing
+    Parameters
+    ----------
+    parent : pyspatialml.Raster
         Requires to parent Raster object in order to setattr when
-        changes in the dict, reflecting changes in the RasterLayers occur
+        changes in the dict, reflecting changes in the RasterLayers occur.
+    
+    loc_indexer : _LocIndexer
+        Wraps around the _LocIndexer class to index it using integer indexes.
     """
 
-    def __init__(self, parent, d):
-        self._index = d
+    def __init__(self, parent, loc_indexer):
         self.parent = parent
+        self._index = loc_indexer
 
     def __setitem__(self, index, value):
+        """
+        Assign a grass.pygrass.raster.RasterRow object to the index using an
+        integer label
+        
+        Parameters
+        ----------
+        index : int, or slice
+            Index position(s) to assign the new RasterRow objects.
+        
+        value : grass.pygrass.raster.RasterRow, or list
+            Values to assign to the index.
+        """
 
         if isinstance(index, int):
             key = list(self._index.keys())[index]
@@ -77,6 +99,40 @@ class LinkedList(object):
                 setattr(self.parent, key, value[i])
 
     def __getitem__(self, index):
-        key = list(self._index.keys())[index]
-        return self._index[key]
-
+        """
+        Get a grass.pygrass.raster.RasterRow object using an integer label
+        
+        Parameters
+        ----------
+        index : int, or slice
+            Index(es) of layers to retrieve.
+        
+        Returns
+        -------
+        value
+        """
+        
+        if isinstance(index, int):
+            key = list(self._index.keys())[index]
+            selected = self._index[key]
+        
+        if isinstance(index, slice):
+            start = index.start
+            stop = index.stop
+            
+            if start is None:
+                start = 0
+            
+            if stop is None:
+                stop = self.parent.count
+            
+            index = list(range(start, stop))
+        
+        if isinstance(index, (list, tuple)):
+            key = []
+            for i in index:
+                key.append(list(self._index.keys())[i])
+            selected = [self._index[k] for k in key]
+            selected = raster.RasterStack([i.fullname() for i in selected])
+        
+        return selected
