@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 import os
 from subprocess import PIPE
+from copy import deepcopy
 
 import grass.script as gs
 import numpy as np
@@ -12,7 +13,7 @@ from grass.pygrass.modules.shortcuts import vector as v
 from grass.pygrass.modules.shortcuts import general as g
 from grass.pygrass.raster import RasterRow, numpy2raster
 from grass.pygrass.raster.buffer import Buffer
-from grass.pygrass.utils import get_mapset_raster, get_raster_for_points
+from grass.pygrass.utils import get_mapset_raster
 from grass.pygrass.vector import VectorTopo
 from indexing import _LocIndexer, _ILocIndexer
 from stats import StatisticsMixin
@@ -555,7 +556,7 @@ class RasterStack(StatisticsMixin):
 
         # determine dtype
         test_window = list(self.row_windows(height=1))[0]
-        img = self.read(window=test_window)
+        img = self.read(rows=test_window)
         result = func(img, estimator)
 
         try:
@@ -593,8 +594,8 @@ class RasterStack(StatisticsMixin):
                     n_windows = len([i for i in self.row_windows(height=height)])
 
                     data_gen = (
-                        (wi, self.read(window=window))
-                        for wi, window in enumerate(self.row_windows(height=height))
+                        (wi, self.read(rows=rows))
+                        for wi, rows in enumerate(self.row_windows(height=height))
                     )
 
                     for wi, arr in data_gen:
@@ -649,7 +650,7 @@ class RasterStack(StatisticsMixin):
         # use class labels if supplied else output preds as 0,1,2...n
         if class_labels is None:
             test_window = list(self.row_windows(height=1))[0]
-            img = self.read(window=test_window)
+            img = self.read(rows=test_window)
             result = func(img, estimator)
             class_labels = range(result.shape[2])
 
@@ -683,8 +684,8 @@ class RasterStack(StatisticsMixin):
             n_windows = len([i for i in self.row_windows(height=height)])
 
             data_gen = (
-                (wi, self.read(window=window))
-                for wi, window in enumerate(self.row_windows(height=height))
+                (wi, self.read(rows=rows))
+                for wi, rows in enumerate(self.row_windows(height=height))
             )
 
         # perform prediction
@@ -983,8 +984,8 @@ class RasterStack(StatisticsMixin):
         columns) of the cells of a Raster object.
         """
 
-        window = (1, 10)
-        arr = self.read(window=window)
+        rows = (1, 10)
+        arr = self.read(rows=rows)
 
         return arr
 
@@ -994,7 +995,7 @@ class RasterStack(StatisticsMixin):
         """
 
         reg = Region()
-        window = (reg.rows - 10, reg.rows)
-        arr = self.read(window=window)
+        rows = (reg.rows - 10, reg.rows)
+        arr = self.read(rows=rows)
 
         return arr
