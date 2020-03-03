@@ -28,7 +28,7 @@
 #%option G_OPT_I_GROUP
 #% key: group
 #% label: Group of raster layers to be classified
-#% description: GRASS imagery group of raster maps representing feature variables to be used in the machine learning model
+#% description: GRASS imagery group of raster maps representing predictor variables to be used in the machine learning model
 #% required: yes
 #% multiple: no
 #%end
@@ -44,7 +44,7 @@
 #%option G_OPT_V_INPUT
 #% key: training_points
 #% label: Vector map with training samples
-#% description: Vector points map where each point is used as training sample. Handling of missing values in training data can be choosen later.
+#% description: Vector points map where each point is used as training sample
 #% required: no
 #% guisection: Required
 #%end
@@ -60,7 +60,8 @@
 #%option G_OPT_F_OUTPUT
 #% key: save_model
 #% label: Save model to file (for compression use e.g. '.gz' extension)
-#% required: no
+#% description: Name of file to store model results using python joblib
+#% required: yes
 #% guisection: Required
 #%end
 
@@ -76,8 +77,8 @@
 
 #%option string
 #% key: penalty
-#% label: The penalty (aka regularization term) to be used
-#% description: The penalty (aka regularization term) to be used for the SGDClassifier/SGDRegressor
+#% label: The regularization method
+#% description: The regularization method to be used for the SGDClassifier and SGDRegressor
 #% answer: l2
 #% options: l1,l2,elasticnet
 #% multiple: yes
@@ -108,7 +109,7 @@
 #% key: c
 #% type: double
 #% label: Inverse of regularization strength
-#% description: Inverse of regularization strength (LogisticRegression and SVC)
+#% description: Inverse of regularization strength (LogisticRegression and SVC/SVR)
 #% answer: 1.0
 #% multiple: yes
 #% guisection: Estimator settings
@@ -243,6 +244,7 @@
 #%option
 #% key: cv
 #% type: integer
+#% label: Number of cross-validation folds
 #% description: Number of cross-validation folds
 #% answer: 1
 #% guisection: Cross validation
@@ -258,6 +260,7 @@
 #%option G_OPT_F_OUTPUT
 #% key: preds_file
 #% label: Save cross-validation predictions to csv
+#% description: Name of output file in which to save the cross-validation predictions
 #% required: no
 #% guisection: Cross validation
 #%end
@@ -265,6 +268,7 @@
 #%option G_OPT_F_OUTPUT
 #% key: classif_file
 #% label: Save classification report to csv
+#% description: Name of output file to save the classification report
 #% required: no
 #% guisection: Cross validation
 #%end
@@ -272,6 +276,7 @@
 #%option G_OPT_F_OUTPUT
 #% key: fimp_file
 #% label: Save feature importances to csv
+#% descriptions: Name of file to save the permutation feature importance results
 #% required: no
 #% guisection: Cross validation
 #%end
@@ -279,6 +284,7 @@
 #%option G_OPT_F_OUTPUT
 #% key: param_file
 #% label: Save hyperparameter search scores to csv
+#% description: Name of file to save the hyperparameter tuning results
 #% required: no
 #% guisection: Cross validation
 #%end
@@ -286,7 +292,8 @@
 #%option
 #% key: random_state
 #% type: integer
-#% description: Seed to use for random state
+#% label: Seed to use for random state
+#% description: Seed to use for random state to enable reproducible results for estimators that have stochastic components
 #% answer: 1
 #% guisection: Optional
 #%end
@@ -294,6 +301,7 @@
 #%option
 #% key: n_jobs
 #% type: integer
+#% label: Number of cores for multiprocessing
 #% description: Number of cores for multiprocessing, -2 is n_cores-1
 #% answer: -2
 #% guisection: Optional
@@ -302,19 +310,21 @@
 #%flag
 #% key: s
 #% label: Standardization preprocessing
-#% description: Standardize feature variables (convert values the get zero mean and unit variance).
+#% description: Standardize feature variables (convert values the get zero mean and unit variance)
 #% guisection: Optional
 #%end
 
 #%flag
 #% key: b
-#% description: Balance training data using class weights
+#% label: Balance training data using class weights
+#% description: Automatically adjust weights inversely proportional to class frequencies
 #% guisection: Optional
 #%end
 
 #%option G_OPT_F_OUTPUT
 #% key: save_training
 #% label: Save training data to csv
+#% description: Name of output file to save training data in comma-delimited format
 #% required: no
 #% guisection: Optional
 #%end
@@ -322,6 +332,7 @@
 #%option G_OPT_F_INPUT
 #% key: load_training
 #% label: Load training data from csv
+#% description: Load previously extracted training data from a csv file
 #% required: no
 #% guisection: Optional
 #%end
