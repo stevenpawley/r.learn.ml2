@@ -1,21 +1,28 @@
 <h2>DESCRIPTION</h2>
 
-<p>Several commonly used classifiers and regressors are exposed in <em>r.learn.train</em> and the choice of classifier
-	is set using the <em>model_name</em> parameter. For more details relating to the classifiers, refer to the <a
-		href="http://scikit-learn.org/stable/">scikit learn documentation.</a> The following classification and
-	regression methods are available:</p>
+<p><em>r.learn.train</em> performs training data extraction, supervised machine learning and cross validation using the
+	python package <em>scikit learn</em>. The choice of machine learning algorithm is set using the
+	<em>model_name</em> parameter. For more details relating to the classifiers, refer to the <a
+		href="http://scikit-learn.org/stable/">scikit learn documentation.</a></p>
+
+<h3>Supervised Learning Algorithms</h3>
+
+<p>The following classification and regression methods are available:</p>
 
 <ul>
-	<li><em>LogisticRegression</em> and <em>LinearRegression</em> represent linear models for classification or
-		regression. <em>SGDClassifier</em> and <em>SGDRegressor</em> are also linear models for classification and
-		regression, but they use stochastic gradient descent for optimization</li>
+	<li><em>LogisticRegression</em> and <em>LinearRegression</em> represent linear models for classification and
+		regression respectively. The <em>SGDClassifier</em> and <em>SGDRegressor</em> are also linear models for
+		classification and regression, but they use stochastic gradient descent optimization suitable for large
+		datasets, and also support l1, l2 and elastic net regularization.</li>
 
 	<li><em>LinearDiscriminantAnalysis</em> and <em>QuadraticDiscriminantAnalysis</em> are classifiers with linear and
 		quadratic decision surfaces. These classifiers do not take any parameters and are inherently multiclass. They
 		can only be used for classification.</li>
 
-	<li><em>KNeighborsClassifier</em> classifies samples based on closest distance to a predefined number of training
-		samples. Two hyperparameters are exposed, with <em>n_neighbors</em> governing the number of neighbors to use to
+	<li><em>KNeighborsClassifier</em> and <em>KNeighborsRegressor</em> are local approximation methods that assign
+		predictions to new observations based on the values assigned to the k-nearest observations in the training data
+		feature space. Two hyperparameters are exposed, with <em>n_neighbors</em> governing the number of neighbors to
+		use to
 		decide the prediction label, and <em>weights</em> specifying whether these neighbors should have equal weights
 		or whether they should be inversely weighted by their distance.</li>
 
@@ -28,16 +35,17 @@
 		prediction of the response variable. Decision trees are non-parametric and can model non-linear relationships
 		between a response and predictor variables, and are insensitive the scaling of the predictors.</li>
 
-	<li>The <em>RandomForestsClassifier</em> and <em>RandomForestsRegressor</em> represent ensemble classification and
+	<li><em>RandomForestClassifier</em> and <em>RandomForestRegressor</em> represent ensemble classification and
 		regression tree methods. Random forests overcome some of the disadvantages of single decision trees by
 		constructing an ensemble of uncorrelated trees. Each tree is constructed from a random subsample of the training
 		data and only a random subset of the predictors based on <em>max_features</em> is made available during each
 		node split. Each tree produces a prediction probability and the final classification result is obtained by
-		averaging of the prediction probabilities across all of the trees. The <em>ExtraTreesClassifier</em> is a
+		averaging of the prediction probabilities across all of the trees. The <em>ExtraTreesClassifier</em> and
+		<em>ExtraTreesRegressor</em> are
 		variant on random forests where during each node split, the splitting rule that is selected is based on the best
 		of a collection of randomly-geneated thresholds that were assigned to the features.</li>
 
-	<li>The <em>GradientBoostingClassifier</em> and <em>GradientBoostingRegressor</em> also represent ensemble
+	<li><em>GradientBoostingClassifier</em> and <em>GradientBoostingRegressor</em> represent ensemble
 		tree-based methods. However, in a boosted model the learning processes is additive in a forward step-wise
 		fashion whereby <i>n_estimators</i> are fit during each model step, and each model step is designed to better
 		fit samples that are not currently well predicted by the previous step. This incrementally improves the
@@ -45,60 +53,133 @@
 		<em>HistGradientBoostingClassifier</em> and <em>HistGradientBoostingRegressor</em> use the new scikit learn
 		multi-threaded implementations.</li>
 
-	<li>The <em>SVC</em> and <em>SVR</em> options are C-Support Vector classifiers or regressors. Only a linear kernel
-		is supported because non-linear kernels using scikit learn for typical remote sensing and spatial analysis
-		datasets which consist of large numbers of samples are too slow to be practical. This classifier can still be
-		slow for large datasets that include &gt 10000 training samples.</li>
+	<li><em>SVC</em> and <em>SVR</em> represent Support Vector Machine classifiers and regressors. Only a linear kernel
+		is enabled in <em>r.learn.ml</em> because the use of non-linear kernels are too slow for most remote sensing and
+		spatial analysis
+		datasets, which consist of large numbers of samples.</li>
 
-	<li>The <em>MLPClassifier</em> and <em>MLPRegressor</em> options provide access to a multi-layer perceptron
-		classifier or regressor.</li>
+	<li><em>MLPClassifier</em> and <em>MLPRegressor</em> provide access to a multi-layer perceptron algorithm for
+		classification or regression.</li>
 </ul>
 
-<p>The Classifier parameters tab provides access to the most pertinent parameters that affect the previously described
-	algorithms. The scikit-learn classifier defaults are generally supplied, and some of these parameters can be tuning
-	using a grid-search by inputting multiple parameter settings as a comma-separated list. This tuning can also be
-	accomplished simultaneously with nested cross-validation by also settings the <em>cv</em> option to &gt 1. The
-	parameters consist of:</p>
+<h3>Hyperparameters</h3>
+
+<p>The Estimator settings tab provides access to the most pertinent parameters that affect the previously described
+	algorithms. The scikit-learn estimator defaults are generally supplied, and some of these parameters can be tuning
+	using a grid-search by inputting multiple parameter settings as a comma-separated list. The grid search is performed
+	using a 2-fold cross validation. This tuning can also be accomplished simultaneously with nested cross-validation by
+	settings the <em>cv</em> option to &gt 1. The parameters consist of:</p>
 
 <ul>
 	<li><em>alpha</em> is the constant used to multiply the regularization term for the <em>SGDClassifier</em> and
-		<em>SGDRegressor</em> algorithm, as well as the <em>MLRClassifier</em> and <em>MLPRegressor</em>.</li>
+		<em>SGDRegressor</em> algorithm, as well as the <em>MLPClassifier</em> and <em>MLPRegressor</em>.</li>
 
 	<li><em>l1_ratio</em> represents the elastic net mixing ratio between l1 and l2 regularization. Applies to
 		the <em>SGDClassifier</em> and <em>SGDRegressor</em> options.</li>
 
 	<li><em>c</em> is the inverse of the regularization strength, which is when a penalty is applied to avoid
-		overfitting. <em>c</em> applies to the <em>LogisticRegression</em> and <em>SVC/SVR</em> models.</li>
+		overfitting. <em>c</em> applies to the <em>LogisticRegression</em> and <em>SVC</em> and <em>SVR</em> models.
+	</li>
 
 	<li><em>epsilon</em> represents the width of the margin that is used to maximize the number of fitted
 		observations within. Applies only to the <em>SVR</em> model.</li>
 
-	<li><em>n_estimators</em> represents the number of trees in Random Forest model, and the number of trees used in
+	<li><em>n_estimators</em> represents the number of trees in Random Forest and Extra Trees models, and the number of
+		trees used in
 		each model step during Gradient Boosting. For random forests, a larger number of trees will never adversely
 		affect accuracy although this is at the expensive of computational performance. In contrast, Gradient boosting
 		will start to overfit if <em>n_estimators</em> is too high, which will reduce model accuracy.</li>
 
 	<li><em>max_features</em> controls the number of variables that are allowed to be chosen from at each node split in
-		the tree-based models, and can be considered to control the degree of correlation between the trees in ensemble
-		tree methods.</li>
+		the ensemble tree-based models (random forests and gradient boosting), and can be considered to control the
+		degree of correlation between the trees.</li>
 
 	<li><em>min_samples_split</em> and <em>min_samples_leaf</em> control the number of samples required to split a node
-		or form a leaf node, respectively.</li>
+		or form a leaf node, respectively, in the tree-based models.</li>
 
-	<li>The <em>learning_rate</em> and <em>subsample</em> parameters apply only to Gradient Boosting and XGBClassifier
-		or XGBRegressor. <em>learning_rate</em> shrinks the contribution of each tree, and <em>subsample</em> is the
+	<li><em>learning_rate</em> and <em>subsample</em> apply only to gradient boosting algorithms. <em>learning_rate</em>
+		shrinks the contribution of each tree, and <em>subsample</em> is the
 		fraction of randomly selected samples for each tree. A lower <em>learning_rate</em> always improves accuracy in
 		gradient boosting but will require a much larger <em>n_estimators</em> setting which will lower computational
 		performance.</li>
 
 	<li><em>hidden_units</em> specifies the number of neurons within each hidden layer when using the
 		<em>MLPClassifier</em>
-		or <em>MLPRegressor</em> methods. The syntax for this parameter is (100;100) for 100 neurons in two hidden
+		or <em>MLPRegressor</em> estimators. The syntax for this parameter is (100;100) for 100 neurons in two hidden
 		layers,
 		or for example (300;100;50) for 300 neurons in the first hidden layer, 100 neurons in the second layer, and
 		50 neurons in the third. Hyperparameter tuning of the number of hidden layers and the number of neurons in
 		each layer can be performed by specifying multiple comma-separated values, e.g. (100;100),(200;200).</li>
 </ul>
+
+<p>The following table summarizes the hyperparameter and which models they apply to:</p>
+
+<table style="width:90%">
+	<tr>
+		<th>Hyperparameter</th>
+		<th>Description</th>
+		<th>Method</th>
+	</tr>
+	<tr>
+		<td>alpha</td>
+		<td>The constrant used to multiply the regularization term</td>
+		<td>SGDClassifier, SGDRegressor, MLPClassifier, MLPRegressor</td>
+	</tr>
+	<tr>
+		<td>l1_ratio</td>
+		<td>The elastic net mixing ration between l1 and l2 regularization</td>
+		<td>SGDClassifier, SGDRegressor</td>
+	</tr>
+	<tr>
+		<td>c</td>
+		<td>Inverse of the regularization strength</td>
+		<td>LogisticRegression, SVC, SVR</td>
+	</tr>
+	<tr>
+		<td>epsilon</td>
+		<td>Width of the margin used to maximize the number of fitted observations</td>
+		<td>SVR</td>
+	</tr>
+	<tr>
+		<td>n_estimators</td>
+		<td>The number of trees</td>
+		<td>RandomForestClassifier, RandomForestRegressor, ExtraTreesClassifier, ExtraTreesRegressor,
+			GradientBoostingClassifier, GradientBoostingRegressor, HistGradientBoostingClassifier,
+			HistGradientBoostingRegressor</td>
+	</tr>
+	<tr>
+		<td>max_features</td>
+		<td>The number of predictor variables that are randomly selected to be available at each node split</td>
+		<td>RandomForestClassifier, RandomForestRegressor, ExtraTreesClassifier, ExtraTreesRegressor,
+			GradientBoostingClassifier, GradientBoostingRegressor, HistGradientBoostingClassifier,
+			HistGradientBoostingRegressor</td>
+	</tr>
+	<tr>
+		<td>min_samples_leaf</td>
+		<td>The number of samples required to split a node</td>
+		<td>RandomForestClassifier, RandomForestRegressor, ExtraTreesClassifier, ExtraTreesRegressor,
+			GradientBoostingClassifier, GradientBoostingRegressor, HistGradientBoostingClassifier,
+			HistGradientBoostingRegressor</td>
+	</tr>
+	<tr>
+		<td>min_samples_split</td>
+		<td>The number of samples required to form a leaf node</td>
+		<td>RandomForestClassifier, RandomForestRegressor, ExtraTreesClassifier, ExtraTreesRegressor,
+			GradientBoostingClassifier, GradientBoostingRegressor, HistGradientBoostingClassifier,
+			HistGradientBoostingRegressor</td>
+	</tr>
+	<tr>
+		<td>learning_rate</td>
+		<td>Shrinkage parameter to control the contribution of each tree</td>
+		<td>GradientBoostingClassifier, GradientBoostingRegressor, HistGradientBoostingClassifier,
+			HistGradientBoostingRegressor</td>
+	</tr>
+	<tr>
+		<td>hidden_units</td>
+		<td>The number of neurons in each hidden layer</td>
+		<td>MLPClassifier, MLRRegressor</td>
+	</tr>
+</table>
 
 <h3>Feature Importances</h3>
 
@@ -110,7 +191,8 @@
 <h3>Cross Validation</h3>
 
 <p>Cross validation can be performed by setting the <em>cv</em> parameters to &gt 1. Cross-validation is performed using
-	stratified kfolds, and multiple global and per-class accuracy measures are produced depending on whether the
+	stratified k-folds for classification and k-folds for regression. Several global and per-class accuracy measures are
+	produced depending on whether the
 	response variable is binary or multiclass, or the classifier is for regression or classification. Cross-validation
 	can also be performed in groups by supplying a raster containing the group_ids of the partitions using the
 	<em>group_raster</em> option. In this case, training samples with the same group id as set by the group_raster will
@@ -139,9 +221,9 @@
 
 <h2>NOTES</h2>
 
-<p>Many of the classifiers involve a random process which can causes a small amount of variation in the classification
-	results, out-of-bag error, and feature importances. To enable reproducible results, a seed is supplied to the
-	classifier. This can be changed using the <em>randst</em> parameter.</p>
+<p>Many of the estimators involve a random process which can causes a small amount of variation in the
+	classification/regression results and and feature importances. To enable reproducible results, a seed is supplied to
+	the estimator. This can be changed using the <em>randst</em> parameter.</p>
 
 <h2>EXAMPLE</h2>
 
@@ -199,4 +281,3 @@ r.category rf_classification
 <h2>AUTHOR</h2>
 
 Steven Pawley
-<p><em>Last changed: $Date: 2019-02-08 15:41:00 -0600 (Fri, 08 Feb 2019) $</em></p>

@@ -43,7 +43,7 @@
 
 #%option G_OPT_V_INPUT
 #% key: training_points
-#% label: Vectorfile with training samples
+#% label: Vector map with training samples
 #% description: Vector points map where each point is used as training sample. Handling of missing values in training data can be choosen later.
 #% required: no
 #% guisection: Required
@@ -395,69 +395,7 @@ def process_hidden(val):
     val = [int(i.strip()) for i in val.split(';')]
     return val
 
-
-def main():
-    try:
-        import sklearn
-
-        if sklearn.__version__ < '0.22':
-            gs.fatal('Scikit learn 0.22 or newer is required')
-
-    except ImportError:
-        gs.fatal('Scikit learn 0.22 or newer is not installed')
-
-    try:
-        import pandas as pd
-
-        if pd.__version__ < '1.0':
-            gs.fatal('Pandas version 1.0 or newer is required')
-
-    except ImportError:
-        gs.fatal('Pandas is not installed')
-
-    # parser options
-    group = options['group']
-    training_map = options['training_map']
-    training_points = options['training_points']
-    field = options['field']
-    model_save = options['save_model']
-
-    model_name = options['model_name']
-    hyperparams = {
-        'penalty': options['penalty'],
-        'alpha': options['alpha'],
-        'l1_ratio': options['l1_ratio'],
-        'C': options['c'],
-        'epsilon': options['epsilon'],
-        'min_samples_split': options['min_samples_split'],
-        'min_samples_leaf': options['min_samples_leaf'],
-        'n_estimators': options['n_estimators'],
-        'learning_rate': options['learning_rate'],
-        'subsample': options['subsample'],
-        'max_depth': options['max_depth'],
-        'max_features': options['max_features'],
-        'n_neighbors': options['n_neighbors'],
-        'weights': options['weights'],
-        'hidden_layer_sizes': options['hidden_units'],
-    }
-
-    cv = int(options['cv'])
-    group_raster = options['group_raster']
-    importances = flags['f']
-    preds_file = options['preds_file']
-    classif_file = options['classif_file']
-    fimp_file = options['fimp_file']
-    param_file = options['param_file']
-
-    norm_data = flags['s']
-    category_maps = option_to_list(options['category_maps'])
-    random_state = int(options['random_state'])
-    load_training = options['load_training']
-    save_training = options['save_training']
-    n_jobs = int(options['n_jobs'])
-    balance = flags['b']
-
-    # make dicts for hyperparameters, datatypes and parameters for tuning
+def process_param_grid(hyperparams):
     hyperparams_type = dict.fromkeys(hyperparams, int)
     hyperparams_type['penalty'] = str
     hyperparams_type['alpha'] = float
@@ -477,7 +415,7 @@ def main():
             
             if key == 'hidden_layer_sizes':
                 values = [process_hidden(i) for i in values]
-                    
+  
             param_grid[key] = [hyperparams_type[key](i) for i in values]
             hyperparams[key] = [hyperparams_type[key](i) for i in values][0] 
         else:
@@ -491,7 +429,70 @@ def main():
     if hyperparams['max_features'] == 0:
         hyperparams['max_features'] = 'auto'
     param_grid = {k: v for k, v in param_grid.items() if v is not None}
+    
+    return hyperparams, param_grid
 
+
+def main():
+    try:
+        import sklearn
+
+        if sklearn.__version__ < '0.22':
+            gs.fatal("Package python3-scikit-learn 0.18 or newer is not installed")
+
+    except ImportError:
+        gs.fatal("Package python3-scikit-learn 0.22 or newer is not installed")
+
+    try:
+        import pandas as pd
+
+        if pd.__version__ < '1.0':
+            gs.fatal('Package python3-pandas 1.0 or newer is not installed')
+
+    except ImportError:
+        gs.fatal('Package python3-pandas 1.0 or newer is not installed')
+
+    # parser options
+    group = options['group']
+    training_map = options['training_map']
+    training_points = options['training_points']
+    field = options['field']
+    model_save = options['save_model']
+    model_name = options['model_name']
+    hyperparams = {
+        'penalty': options['penalty'],
+        'alpha': options['alpha'],
+        'l1_ratio': options['l1_ratio'],
+        'C': options['c'],
+        'epsilon': options['epsilon'],
+        'min_samples_split': options['min_samples_split'],
+        'min_samples_leaf': options['min_samples_leaf'],
+        'n_estimators': options['n_estimators'],
+        'learning_rate': options['learning_rate'],
+        'subsample': options['subsample'],
+        'max_depth': options['max_depth'],
+        'max_features': options['max_features'],
+        'n_neighbors': options['n_neighbors'],
+        'weights': options['weights'],
+        'hidden_layer_sizes': options['hidden_units'],
+    }
+    cv = int(options['cv'])
+    group_raster = options['group_raster']
+    importances = flags['f']
+    preds_file = options['preds_file']
+    classif_file = options['classif_file']
+    fimp_file = options['fimp_file']
+    param_file = options['param_file']
+    norm_data = flags['s']
+    category_maps = option_to_list(options['category_maps'])
+    random_state = int(options['random_state'])
+    load_training = options['load_training']
+    save_training = options['save_training']
+    n_jobs = int(options['n_jobs'])
+    balance = flags['b']
+
+    # define estimator
+    hyperparams, param_grid = process_param_grid(hyperparams)
     estimator, mode = predefined_estimators(
         model_name, random_state, n_jobs, hyperparams
     )
@@ -519,6 +520,26 @@ def main():
     if mode == 'regression' and balance is True:
         gs.warning('Balancing of class weights is only possible for classification')
         balance = False
+    
+    if classif_file:
+        if cv <= 1:
+            gs.fatal('Output of cross-validation global accuracy requires cross-validation cv > 1')
+        if not os.path.exists(os.path.dirname(classif_file)):
+            gs.fatal('Directory for output file {} does not exist'.format(classif_file))
+    
+     # feature importance file selected but no cross-validation scheme used
+    if fimp_file:
+        if importances is False:
+            gs.fatal('Output of feature importance requires the "f" flag to be set')
+        if not os.path.exists(os.path.dirname(fimp_file)):
+            gs.fatal('Directory for output file {} does not exist'.format(fimp_file))
+    
+    # predictions file selected but no cross-validation scheme used
+    if preds_file:
+        if cv <= 1:
+            gs.fatal('Output of cross-validation predictions requires cross-validation cv > 1')
+        if not os.path_exists(os.path.dirname(preds_file)):
+            gs.fatal('Directory for output file {} does not exist'.format(preds_file))
 
     # define RasterStack
     stack = RasterStack(group=group)
