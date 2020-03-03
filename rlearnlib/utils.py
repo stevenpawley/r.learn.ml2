@@ -24,8 +24,8 @@ def option_to_list(x, dtype=None):
     """
     Parses a multiple choice option from into a list
     
-    Args
-    ----
+    Parameters
+    ----------
     x : str
         String with comma-separated values
     
@@ -61,18 +61,27 @@ def predefined_estimators(estimator, random_state, n_jobs, p):
     """
     Provides the classifiers and parameters using by the module
 
-    Args
-    ----
-    estimator (string): Name of scikit learn estimator
-    random_state (float): Seed to use in randomized components
-    n_jobs (integer): Number of processing cores to use
-    p (dict): Classifier setttings (keys) and values
+    Parameters
+    -----------
+    estimator : str
+        Name of scikit learn estimator.
+
+    random_state : Any number
+        Seed to use in randomized components.
+    
+    n_jobs : int
+        Number of processing cores to use.
+    
+    p : dict
+        Classifier setttings (keys) and values.
 
     Returns
     -------
-    clf (object): Scikit-learn classifier object
-    mode (string): Flag to indicate whether classifier performs classification
-        or regression
+    clf : object
+        Scikit-learn classifier object
+
+    mode : str
+        Flag to indicate whether classifier performs classification or regression.
     """
     try:
         from sklearn.experimental import enable_hist_gradient_boosting
@@ -284,8 +293,8 @@ def scoring_metrics(mode):
     Simple helper function to return a suite of scoring methods depending on
     if classification or regression is required
     
-    Args
-    ----
+    Parameters
+    ----------
     mode : str
         'classification' or 'regression'
     
@@ -293,6 +302,7 @@ def scoring_metrics(mode):
     -------
     scoring : list
         List of sklearn scoring metrics
+
     search_scorer : func, or str
         Scoring metric to use for hyperparameter tuning
     """
@@ -337,14 +347,19 @@ def save_training_data(file, X, y, cat, groups=None, names=None):
     ----------
     file : str
         Path to a csv file to save data to
+
     X : ndarray
         2d numpy array containing predictor values
+
     y : ndarray
         1d numpy array containing labels
+
     cat : ndarray
         1d numpy array of GRASS key column
+
     groups :ndarray (opt)
         1d numpy array containing group labels
+
     names : list (opt)
         Optionally pass names of features to use as a heading
     """
@@ -370,8 +385,8 @@ def load_training_data(file):
     """
     Loads training data and labels from a csv file
 
-    Args
-    ----
+    Parameters
+    ----------
     file (string): Path to a csv file to save data to
 
     Returns
@@ -409,8 +424,8 @@ def grass_read_vect_sql(vect):
 
     Currently only Point geometries are supported
 
-    Args
-    ----
+    Parameters
+    ----------
     vect : str
         Name of GRASS GIS vector map
     
@@ -441,7 +456,6 @@ def grass_read_vect_sql(vect):
 
         df.geometry = [Point(p) for p in df.geometry]
         df = gpd.GeoDataFrame(df)
-        df.crs = {"init": "epsg:3400"}
 
     df = df.drop(columns=["cat.y"])
 
@@ -455,8 +469,8 @@ def grass_write_vect_sql(gpdf, x="x_crd", y="y_crd", output=None, overwrite=Fals
 
     Currently only point geometries are supported
 
-    Args
-    ----
+    Parameters
+    ----------
     gpdf : geopandas.GeoDataFrame
         Containing point geometries
 
@@ -492,6 +506,20 @@ def grass_write_vect_sql(gpdf, x="x_crd", y="y_crd", output=None, overwrite=Fals
 
 
 def grass_read_vect(vect):
+    """
+    Read a GRASS GIS vector map into a Geopandas GeoDataFrame
+
+    Occurs via an intermediate tempfile
+
+    Parameters
+    ----------
+    vect : str
+        Name of GRASS GIS vector map
+    
+    Returns
+    -------
+    geopandas.GeoDataFrame
+    """
     try:
         import geopandas as gpd
     except ImportError:
@@ -504,6 +532,26 @@ def grass_read_vect(vect):
 
 
 def grass_write_vect(gpdf, output, overwrite=False, flags=""):
+    """
+    Write a Geopandas GeoDataFrame object to the GRASS GIS db
+
+    Occurs via an intermediate tempfile
+
+    Parameters
+    ----------
+    gpdf : geopandas.GeoDataFrame
+        Geodataframe to write to GRASS
+    
+    output : str
+        Name to use to store the dataset in GRASS
+    
+    overwrite : bool
+        Whether to overwrite existing datasets
+    
+    flags : str, list, tuple
+        Flags to pass to GRASS v.in.ogr command
+    """
+
     try:
         import geopandas as gpd
     except ImportError:
@@ -516,6 +564,20 @@ def grass_write_vect(gpdf, output, overwrite=False, flags=""):
 
 
 def euclidean_distance_fields(prefix, region, overwrite=False):
+    """
+    Generate euclidean distance fields from map corner and centre coordinates
+
+    Parameters
+    ----------
+    prefix : str
+        Name to use as prefix to save distance maps
+
+    region : grass.pygrass.gis.region.Region
+        Region
+
+    overwrite : bool
+        Whether to overwrite existing maps
+    """
 
     point_topleft = Point(
         region.west + region.ewres / 2, region.north - region.nsres / 2
@@ -569,4 +631,3 @@ def euclidean_distance_fields(prefix, region, overwrite=False):
 
         g.remove(name=point_name, type="raster", flags="f")
         g.remove(name=point_name, type="raster", flags="f")
-
