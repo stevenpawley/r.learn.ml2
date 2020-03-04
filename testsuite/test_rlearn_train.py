@@ -13,6 +13,8 @@ This program is free software under the GNU General Public
 License (>=v2). Read the file COPYING that comes with GRASS
 for details.
 """
+import tempfile
+import os
 
 import grass.script as gs
 
@@ -20,110 +22,163 @@ from grass.gunittest.case import TestCase
 from grass.gunittest.main import test
 
 
-class TestExtractTraining(TestCase):
-    """Test training data extraction"""
+class TestRLearnMl(TestCase):
+    """Test learning and prediction using r.learn.ml"""
 
     # Raster maps be used as inputs (they exist in the NC SPM sample location)
-    test_input_1 = "landclass96"
+    classif_map = "landclass96"
+    band1 = "lsat7_2002_10"
+    band2 = "lsat7_2002_20"
+    band3 = "lsat7_2002_30"
+    band4 = "lsat7_2002_40"
+    band5 = "lsat7_2002_50"
+    band7 = "lsat7_2002_70"
     
-    # Raster map name be used as output
-    output = "plus_result"
+    # Data that is generated and is required for the tests
+    output = "classification_result"
+    model_file = tempfile.NamedTemporaryFile(suffix='.gz').name
+    group = "predictors"
+    labelled_pixels = "landclass96_roi"
+    labelled_points = "landclass96_roi_points"
 
     @classmethod
     def setUpClass(cls):
-        """Ensures expected computational region (and anything else needed)
-
-        These are things needed by all test function but not modified by
-        any of them.
-        """
-        # We will use specific computational region for our process in case
-        # something else is running in parallel with our tests.
+        """Setup that is required for all tests"""
+        
+        # Use temporary computational region
         cls.use_temp_region()
-
-        # Use of of the inputs to set computational region
-        cls.runModule("g.region", raster=cls.test_input_1)
-
+        cls.runModule("g.region", raster=cls.classif_map)
+        
+        # Create an imagery group of raster predictors
+        cls.runModule(
+            "i.group", 
+            group=cls.group,
+            input=[cls.band1, cls.band2, cls.band3, cls.band4, cls.band5, cls.band7]
+        )
+        
+        # Generate some training data from a previous classification map
+        cls.runModule("r.random", input=cls.classif_map, npoints=1000, raster=cls.labelled_pixels,
+                      seed=1234)
+        cls.runModule("r.to.vect", input=cls.labelled_pixels, output=cls.labelled_points,
+                      type='point')
+        
     @classmethod
     def tearDownClass(cls):
         """Remove the temporary region (and anything else we created)"""
+        
         cls.del_temp_region()
+        cls.runModule("g.remove", flags="f", type="raster", name=cls.labelled_pixels)
+        cls.runModule("g.remove", flags="f", type="vector", name=cls.labelled_points)
+        cls.runModule("g.remove", flags="f", type="group", name=cls.group)
 
     def tearDown(self):
-        """Remove the output created from the module
-
-        This is executed after each test function run. If we had
-        something to set up before each test function run, we would use setUp()
-        function.
-
-        Since we remove the raster map after running each test function,
-        we can reuse the same name for all the test functions.
-        """
+        """Remove the output created from the tests
+        (reuse the same name for all the test functions)"""
         self.runModule("g.remove", flags="f", type="raster", name=[self.output])
-
-    def test_output_created(self):
-        """Check that the output is created"""
         
-        # run the watershed module
+        try:
+            os.remove(self.model_file)
+        except FileNotFoundError:
+            pass
+            
+    def test_output_created_labelled_pixels(self):
+        """Checks that the output is created"""
+                
+        # test r.learn.train using pixels
         self.assertModule(
-            "r.example.plus",
-            a_input=self.test_input_1,
-            b_input=self.test_input_2,
-            output=self.output,
+            "r.learn.train",
+            group=self.group,
+            training_map=self.labelled_pixels,
+            model_name="RandomForestClassifier",
+            n_estimators=100,
+            save_model=self.model_file
         )
-        # check to see if output is in mapset
+        self.assertFileExists(filename=self.model_file)
+        
+        # test prediction exists
+        self.assertModule(
+            "r.learn.predict",
+            group=self.group,
+            load_model=self.model_file,
+            output=self.output
+        )
         self.assertRasterExists(self.output, msg="Output was not created")
+        
+    def test_output_created_prediction_points(self):
+        """Checks that output is created"""
 
-    def test_missing_parameter(self):
-        """Check that the module fails when parameters are missing
-
-        Checks absence of each of the three parameters. Each parameter absence
-        is tested separatelly.
-
-        Note that this does not cover all the possible combinations, but it
-        tries to simulate most of possible user errors and it should cover
-        most of the implementation.
-        """
-        self.assertModuleFail(
-            "r.example.plus",
-            b_input=self.test_input_2,
-            output=self.output,
-            msg="The a_input parameter should be required",
-        )
-        self.assertModuleFail(
-            "r.example.plus",
-            a_input=self.test_input_1,
-            output=self.output,
-            msg="The b_input parameter should be required",
-        )
-        self.assertModuleFail(
-            "r.example.plus",
-            a_input=self.test_input_1,
-            b_input=self.test_input_2,
-            msg="The output parameter should be required",
-        )
-
-    def test_output_range(self):
-        """Check to see if output is within the expected range"""
+        # training
         self.assertModule(
-            "r.example.plus",
-            a_input=self.test_input_1,
-            b_input=self.test_input_2,
-            output=self.output,
+            "r.learn.train",
+            group=self.group,
+            training_points=self.labelled_points,
+            field='value',
+            model_name="RandomForestClassifier",
+            n_estimators=100,
+            save_model=self.model_file
         )
-
-        min_1, max_1 = get_raster_min_max(self.test_input_1)
-        min_2, max_2 = get_raster_min_max(self.test_input_2)
-
-        reference_min = min_1 + min_2
-        reference_max = max_1 + max_2
-
-        self.assertRasterMinMax(
-            self.output,
-            reference_min,
-            reference_max,
-            msg="Output exceeds the values computed from inputs",
+        self.assertFileExists(filename=self.model_file)
+        
+        # prediction
+        self.assertModule(
+            "r.learn.predict",
+            group=self.group,
+            load_model=self.model_file,
+            output=self.output
         )
-
+        self.assertRasterExists(self.output, msg="Output was not created")
+    
+    def test_train_missing_parameter(self):
+        """Check that module fails when parameters are missing"""
+        
+        # missing group
+        self.assertModuleFail(
+            "r.learn.train",
+            training_points=self.labelled_points,
+            field='value',
+            model_name="RandomForestClassifier",
+            n_estimators=100,
+            save_model=self.model_file
+        )
+        
+        # missing any training data
+        self.assertModuleFail(
+            "r.learn.train",
+            group=self.group,
+            model_name="RandomForestClassifier",
+            n_estimators=100,
+            save_model=self.model_file
+        )
+        
+        # using points as input but no field specified
+        self.assertModuleFail(
+            "r.learn.train",
+            group=self.group,
+            training_points=self.labelled_points,
+            model_name="RandomForestClassifier",
+            n_estimators=100,
+            save_model=self.model_file
+        )
+        
+        # using both points and labelled pixels
+        self.assertModuleFail(
+            "r.learn.train",
+            group=self.group,
+            training_points=self.labelled_points,
+            training_map=self.labelled_pixels,
+            model_name="RandomForestClassifier",
+            n_estimators=100,
+            save_model=self.model_file
+        )
+        
+        # no output
+        self.assertModuleFail(
+            "r.learn.train",
+            group=self.group,
+            training_points=self.labelled_points,
+            model_name="RandomForestClassifier",
+            n_estimators=100
+        )
 
 if __name__ == "__main__":
     test()
