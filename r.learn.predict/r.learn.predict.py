@@ -62,18 +62,17 @@
 #%option
 #% key: chunksize
 #% type: integer
-#% description: Size of MB for each block of data to be read from the disk
-#% answer: 500
+#% label: Number of pixels to pass to the prediction method
+#% description: Number of pixels to pass to the prediction method. GRASS GIS reads raster by-row so chunksize is rounded down based on the number of columns
+#% answer: 100000
 #% guisection: Optional
 #%end
 
-from __future__ import absolute_import, print_function
 
-import os
 import sys
 import grass.script as gs
 import numpy as np
-import tempfile
+import math
 from grass.script.utils import get_lib_path
 from grass.pygrass.gis.region import Region
 from grass.pygrass.modules.shortcuts import raster as r
@@ -84,16 +83,15 @@ if path is None:
 sys.path.append(path)
 
 from raster import RasterStack
+from utils import create_permutation_scorer
 
 
 def string_to_rules(string):
-    # Converts a string to a file for input as a GRASS Rules File
-
+    """Converts a string to a file for input as a GRASS Rules File"""
     tmp = gs.tempfile()
     f = open("%s" % (tmp), "wt")
     f.write(string)
     f.close()
-
     return tmp
 
 
@@ -120,22 +118,19 @@ def main():
     if "@" in output:
         output = output.split("@")[0]
 
-    # check that probabilities=True if prob_only=True
+    # check probabilities=True if prob_only=True
     if prob_only is True and probability is False:
         gs.fatal("Need to set probabilities=True if prob_only=True")
 
-    # reload fitted model and trainign data
+    # reload fitted model and training data
     estimator, y, class_labels = joblib.load(model_load)
 
     # define RasterStack
     stack = RasterStack(group=group)
 
     # perform raster prediction
-    # calculate chunksize
     region = Region()
-    row = stack.read(1)
-    rowsize_mg = row.nbytes / 1000000
-    row_incr = int(float(chunksize) / float(rowsize_mg))
+    row_incr = math.floor(chunksize / region.cols)
 
     # do not read by increments if increment > n_rows
     if row_incr >= region.rows:

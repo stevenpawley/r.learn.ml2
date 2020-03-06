@@ -137,20 +137,17 @@ def predefined_estimators(estimator, random_state, n_jobs, p):
         "DecisionTreeClassifier": DecisionTreeClassifier(
             max_depth=p["max_depth"],
             max_features=p["max_features"],
-            min_samples_split=p["min_samples_split"],
             min_samples_leaf=p["min_samples_leaf"],
             random_state=random_state,
         ),
         "DecisionTreeRegressor": DecisionTreeRegressor(
             max_features=p["max_features"],
-            min_samples_split=p["min_samples_split"],
             min_samples_leaf=p["min_samples_leaf"],
             random_state=random_state,
         ),
         "RandomForestClassifier": RandomForestClassifier(
             n_estimators=p["n_estimators"],
             max_features=p["max_features"],
-            min_samples_split=p["min_samples_split"],
             min_samples_leaf=p["min_samples_leaf"],
             random_state=random_state,
             n_jobs=n_jobs,
@@ -159,7 +156,6 @@ def predefined_estimators(estimator, random_state, n_jobs, p):
         "RandomForestRegressor": RandomForestRegressor(
             n_estimators=p["n_estimators"],
             max_features=p["max_features"],
-            min_samples_split=p["min_samples_split"],
             min_samples_leaf=p["min_samples_leaf"],
             random_state=random_state,
             n_jobs=n_jobs,
@@ -168,7 +164,6 @@ def predefined_estimators(estimator, random_state, n_jobs, p):
         "ExtraTreesClassifier": ExtraTreesClassifier(
             n_estimators=p["n_estimators"],
             max_features=p["max_features"],
-            min_samples_split=p["min_samples_split"],
             min_samples_leaf=p["min_samples_leaf"],
             random_state=random_state,
             n_jobs=n_jobs,
@@ -178,7 +173,6 @@ def predefined_estimators(estimator, random_state, n_jobs, p):
         "ExtraTreesRegressor": ExtraTreesRegressor(
             n_estimators=p["n_estimators"],
             max_features=p["max_features"],
-            min_samples_split=p["min_samples_split"],
             min_samples_leaf=p["min_samples_leaf"],
             random_state=random_state,
             bootstrap=True,
@@ -189,7 +183,6 @@ def predefined_estimators(estimator, random_state, n_jobs, p):
             learning_rate=p["learning_rate"],
             n_estimators=p["n_estimators"],
             max_depth=p["max_depth"],
-            min_samples_split=p["min_samples_split"],
             min_samples_leaf=p["min_samples_leaf"],
             subsample=p["subsample"],
             max_features=p["max_features"],
@@ -199,7 +192,6 @@ def predefined_estimators(estimator, random_state, n_jobs, p):
             learning_rate=p["learning_rate"],
             n_estimators=p["n_estimators"],
             max_depth=p["max_depth"],
-            min_samples_split=p["min_samples_split"],
             min_samples_leaf=p["min_samples_leaf"],
             subsample=p["subsample"],
             max_features=p["max_features"],
@@ -209,7 +201,6 @@ def predefined_estimators(estimator, random_state, n_jobs, p):
             learning_rate=p["learning_rate"],
             n_estimators=p["n_estimators"],
             max_depth=p["max_depth"],
-            min_samples_split=p["min_samples_split"],
             min_samples_leaf=p["min_samples_leaf"],
             subsample=p["subsample"],
             max_features=p["max_features"],
@@ -219,7 +210,6 @@ def predefined_estimators(estimator, random_state, n_jobs, p):
             learning_rate=p["learning_rate"],
             n_estimators=p["n_estimators"],
             max_depth=p["max_depth"],
-            min_samples_split=p["min_samples_split"],
             min_samples_leaf=p["min_samples_leaf"],
             subsample=p["subsample"],
             max_features=p["max_features"],
@@ -333,7 +323,16 @@ def scoring_metrics(mode):
     return (scoring, search_scorer)
 
 
-def save_training_data(file, X, y, cat, groups=None, names=None):
+def create_permutation_scorer(base_estimator, scoring, X, y):
+    """Generate a permutation score function using an estimator"""
+    from sklearn.inspection import permutation_importance
+    base_estimator = deepcopy(base_estimator)
+    base_estimator.fit(X, y)
+    scores = permutation_importance(base_estimator, X, y, scoring=scoring)
+    return scores["importances_mean"]
+
+
+def save_training_data(file, X, y, cat, class_labels=None, groups=None, names=None):
     """
     Saves any extracted training data to a csv file.
     
@@ -357,6 +356,9 @@ def save_training_data(file, X, y, cat, groups=None, names=None):
     cat : ndarray
         1d numpy array of GRASS key column
 
+    class_labels : ndarray
+        List or array of class labels
+
     groups :ndarray (opt)
         1d numpy array containing group labels
 
@@ -369,14 +371,18 @@ def save_training_data(file, X, y, cat, groups=None, names=None):
     if names is None:
         names = ["feature" + str(i) for i in range(X.shape[1])]
 
-    names = ",".join(names + ["response", "cat", "groups"])
+    names = ",".join(names + ["response", "cat", "class_labels", "groups"])
 
     # if there are no group labels, create a nan filled array
     if groups is None:
         groups = np.empty((y.shape[0]))
         groups[:] = np.nan
 
-    training_data = np.column_stack([X, y, cat, groups])
+    if class_labels is None:
+        class_labels = np.empty((y.shape[0]))
+        class_labels[:] = np.nan
+
+    training_data = np.column_stack([X, y, cat, class_labels, groups])
 
     np.savetxt(fname=file, X=training_data, delimiter=",", header=names, comments="")
 
@@ -394,6 +400,7 @@ def load_training_data(file):
     X (2d numpy array): Numpy array containing predictor values
     y (1d numpy array): Numpy array containing labels
     cat (1d numpy array): Numpy array of GRASS key column
+    class_labels (1d numpy array): Numpy array of labels
     groups (1d numpy array): Numpy array of group labels, or None
     """
 
@@ -407,14 +414,17 @@ def load_training_data(file):
     if bool(np.isnan(groups).all()) is True:
         groups = None
 
-    # cat stored in 2nd last column
-    cat = training_data[:, -2]
+    # class labels stored in 2nd last column
+    class_labels = training_data[:, -2]
 
-    # response stored in 3rd last column
-    y = training_data[:, -3]
+    # cat stored in 3rd last column
+    cat = training_data[:, -3]
+
+    # response stored in 4th last column
+    y = training_data[:, -4]
     X = training_data[:, 0:last_Xcol]
 
-    return (X, y, cat, groups)
+    return (X, y, cat, class_labels, groups)
 
 
 def grass_read_vect_sql(vect):

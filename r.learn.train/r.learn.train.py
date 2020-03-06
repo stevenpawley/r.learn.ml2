@@ -145,16 +145,6 @@
 #%end
 
 #%option
-#% key: min_samples_split
-#% type: integer
-#% label: The minimum number of samples required for node splitting
-#% description: The minimum number of samples required for node splitting in tree-based estimators
-#% answer: 2
-#% multiple: yes
-#% guisection: Estimator settings
-#%end
-
-#%option
 #% key: min_samples_leaf
 #% type: integer
 #% label: The minimum number of samples required to form a leaf node
@@ -225,28 +215,19 @@
 
 #%option
 #% key: percentile
-#% type: double
+#% type: integer
 #% label: The percentile of top-scoring features to retain in feature selection
 #% description: The percentile of top-scoring features to retain in feature selection
-#% answer: 0.1
+#% answer: 10
 #% multiple: yes
 #% guisection: Estimator settings
 #%end
 
 #%flag
 #% key: i
-#% label: Perform permutation feature selection before model fitted
+#% label: Perform permutation feature selection before model fitting
 #% description: Perform permutation feature selection before model fitted
 #% guisection: Estimator settings
-#%end
-
-#%option G_OPT_R_INPUT
-#% key: category_maps
-#% required: no
-#% multiple: yes
-#% label: Names of categorical rasters within the imagery group
-#% description: Names of categorical rasters within the imagery group that will be one-hot encoded. Leave empty if none.
-#% guisection: Optional
 #%end
 
 #%option G_OPT_R_INPUT
@@ -384,6 +365,7 @@ from utils import (
     option_to_list,
     scoring_metrics,
     check_class_weights,
+    create_permutation_scorer
 )
 from raster import RasterStack
 
@@ -440,7 +422,6 @@ def process_param_grid(hyperparams):
     hyperparams_type["subsample"] = float
     hyperparams_type["weights"] = str
     hyperparams_type["hidden_layer_sizes"] = tuple
-    hyperparams_type["percentile"] = float
     param_grid = deepcopy(hyperparams_type)
     param_grid = dict.fromkeys(param_grid, None)
 
@@ -466,14 +447,6 @@ def process_param_grid(hyperparams):
     param_grid = {k: v for k, v in param_grid.items() if v is not None}
 
     return hyperparams, param_grid
-
-
-def create_permutation_scorer(base_estimator, X, y, scoring):
-    """Generate a permutation score function using an estimator"""
-    base_estimator = deepcopy(base_estimator)
-    base_estimator.fit(X, y)
-    scores = permutation_importance(base_estimator, X, y, scoring=scoring)
-    return scores["importances_mean"]
 
 
 def main():
@@ -508,7 +481,6 @@ def main():
         "l1_ratio": options["l1_ratio"],
         "C": options["c"],
         "epsilon": options["epsilon"],
-        "min_samples_split": options["min_samples_split"],
         "min_samples_leaf": options["min_samples_leaf"],
         "n_estimators": options["n_estimators"],
         "learning_rate": options["learning_rate"],
@@ -517,8 +489,7 @@ def main():
         "max_features": options["max_features"],
         "n_neighbors": options["n_neighbors"],
         "weights": options["weights"],
-        "hidden_layer_sizes": options["hidden_units"],
-        "percentile": options["percentile"]
+        "hidden_layer_sizes": options["hidden_units"]
     }
     cv = int(options["cv"])
     group_raster = options["group_raster"]
@@ -529,7 +500,6 @@ def main():
     fimp_file = options["fimp_file"]
     param_file = options["param_file"]
     norm_data = flags["s"]
-    category_maps = option_to_list(options["category_maps"])
     random_state = int(options["random_state"])
     load_training = options["load_training"]
     save_training = options["save_training"]
@@ -593,12 +563,9 @@ def main():
     # define RasterStack -----------------------------------------------------------------------------------------------
     stack = RasterStack(group=group)
 
-    if category_maps is not None:
-        stack.categorical = category_maps
-
     # extract training data --------------------------------------------------------------------------------------------
     if load_training != "":
-        X, y, cat, group_id = load_training_data(load_training)
+        X, y, cat, class_labels, group_id = load_training_data(load_training)
     else:
         gs.message("Extracting training data")
 
@@ -647,7 +614,7 @@ def main():
             )
 
         if save_training != "":
-            save_training_data(save_training, X, y, cat, group_id, stack.names)
+            save_training_data(save_training, X, y, cat, class_labels, group_id, stack.names)
 
     # cross validation settings ----------------------------------------------------------------------------------------
     # inner resampling method (cv=2)
@@ -685,56 +652,30 @@ def main():
 
     # preprocessing ----------------------------------------------------------------------------------------------------
     from sklearn.pipeline import Pipeline
-    from sklearn.compose import ColumnTransformer
-    from sklearn.preprocessing import StandardScaler, OneHotEncoder
+    from sklearn.preprocessing import StandardScaler
 
     # standardization
-    if norm_data is True and category_maps is None:
+    if norm_data is True:
         scaler = StandardScaler()
-        trans = ColumnTransformer(
-            remainder="passthrough",
-            transformers=[("scaling", scaler, np.arange(0, stack.count))],
-        )
-
-    # one-hot encoding
-    elif norm_data is False and category_maps is not None:
-        enc = OneHotEncoder(handle_unknown="ignore", sparse=False)
-        trans = ColumnTransformer(
-            remainder="passthrough", transformers=[("onehot", enc, stack.categorical)]
-        )
-
-    # standardization and one-hot encoding
-    elif norm_data is True and category_maps is not None:
-        scaler = StandardScaler()
-        enc = OneHotEncoder(handle_unknown="ignore", sparse=False)
-        trans = ColumnTransformer(
-            remainder="passthrough",
-            transformers=[
-                ("onehot", enc, stack.categorical),
-                ("scaling", scaler, ~stack.categorical),
-            ],
-        )
-
-    # combine transformers
-    if norm_data is True or category_maps is not None:
-        estimator = Pipeline([("preprocessing", trans), ("estimator", estimator)])
+        estimator = Pipeline([("preprocessing", scaler), ("estimator", estimator)])
         param_grid = wrap_named_step(param_grid)
         fit_params = wrap_named_step(fit_params)
 
     # feature selection wrapper ----------------------------------------------------------------------------------------
     if feature_selection is True:
-        from sklearn.inspection import permutation_importance
         from sklearn.feature_selection import SelectPercentile
 
         permutation_scorer = partial(
-            create_permutation_scorer, base_estimator=estimator, scoring=search_scorer
+            create_permutation_scorer, estimator, search_scorer
         )
         estimator = Pipeline([
-            ("selection", SelectPercentile(permutation_scorer)),
+            ("selection", SelectPercentile(score_func=permutation_scorer)),
             ("estimator", estimator),
         ])
+
         param_grid = wrap_named_step(param_grid)
         fit_params = wrap_named_step(fit_params)
+        param_grid['selection__percentile'] = [int(i) for i in options["percentile"].split(',')]
 
     if any(param_grid) is True:
         estimator = GridSearchCV(
@@ -759,7 +700,15 @@ def main():
     if any(param_grid) is True:
         gs.message(os.linesep)
         gs.message("Best parameters:")
-        gs.message(str(estimator.best_params_))
+
+        optimal_pars = [
+            (k.replace('estimator__', '').replace('selection__', '') + ' = ' + str(v))
+            for (k, v) in estimator.best_params_.items()
+        ]
+
+        for i in optimal_pars:
+            gs.message(i)
+
         if param_file != "":
             param_df = pd.DataFrame(estimator.cv_results_)
             param_df.to_csv(param_file)

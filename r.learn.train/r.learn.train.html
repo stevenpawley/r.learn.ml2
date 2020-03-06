@@ -3,7 +3,15 @@
 <p><em>r.learn.train</em> performs training data extraction, supervised machine learning and cross validation using the
 	python package <em>scikit learn</em>. The choice of machine learning algorithm is set using the
 	<em>model_name</em> parameter. For more details relating to the classifiers, refer to the <a
-		href="http://scikit-learn.org/stable/">scikit learn documentation.</a></p>
+		href="http://scikit-learn.org/stable/">scikit learn documentation.</a>. The training data can be provided by
+	a GRASS raster map containing labelled pixels using the <em>training_map</em> parameter, or can come from a GRASS
+	vector dataset containing point geometries using the <em>training_points</em> parameter. If a vector map is
+	used then the <em>field</em> parameter also needs to indicate which column in the vector
+	attribute table contains the labels/values for training. For regression models this field must contain only
+	numeric values. For classification models the field can contain integer-encoded labels, or it can represent text, in which
+	case the text categories will be encoded as numeric values (in alphabetical order). These text labels will
+	also be applied as categories to the classification output when using <b>r.learn.predict</b>. The vector map should
+	also not contain multiple geometries per attribute.</p>
 
 <h3>Supervised Learning Algorithms</h3>
 
@@ -13,7 +21,7 @@
 	<li><em>LogisticRegression</em> and <em>LinearRegression</em> represent linear models for classification and
 		regression respectively. The <em>SGDClassifier</em> and <em>SGDRegressor</em> are also linear models for
 		classification and regression, but they use stochastic gradient descent optimization suitable for large
-		datasets, and also support l1, l2 and elastic net regularization.</li>
+		datasets and supports l1, l2 and elastic net regularization.</li>
 
 	<li><em>LinearDiscriminantAnalysis</em> and <em>QuadraticDiscriminantAnalysis</em> are classifiers with linear and
 		quadratic decision surfaces. These classifiers do not take any parameters and are inherently multiclass. They
@@ -22,9 +30,8 @@
 	<li><em>KNeighborsClassifier</em> and <em>KNeighborsRegressor</em> are local approximation methods that assign
 		predictions to new observations based on the values assigned to the k-nearest observations in the training data
 		feature space. Two hyperparameters are exposed, with <em>n_neighbors</em> governing the number of neighbors to
-		use to
-		decide the prediction label, and <em>weights</em> specifying whether these neighbors should have equal weights
-		or whether they should be inversely weighted by their distance.</li>
+		used to decide the prediction label, and <em>weights</em> specifying whether these neighbors should have equal
+		weights or whether they should be inversely weighted by their distance.</li>
 
 	<li><em>GaussianNB</em> is the Gaussian Naive Bayes algorithm and can be used for classification only. Naive Bayes
 		is a supervised learning algorithm based on applying Bayes theorem with the naive assumption of independence
@@ -41,9 +48,9 @@
 		data and only a random subset of the predictors based on <em>max_features</em> is made available during each
 		node split. Each tree produces a prediction probability and the final classification result is obtained by
 		averaging of the prediction probabilities across all of the trees. The <em>ExtraTreesClassifier</em> and
-		<em>ExtraTreesRegressor</em> are
-		variant on random forests where during each node split, the splitting rule that is selected is based on the best
-		of a collection of randomly-geneated thresholds that were assigned to the features.</li>
+		<em>ExtraTreesRegressor</em> are variant on random forests where during each node split, the splitting rule that
+		is selected is based on the best of a collection of randomly-geneated thresholds that were assigned to the
+		features.</li>
 
 	<li><em>GradientBoostingClassifier</em> and <em>GradientBoostingRegressor</em> represent ensemble
 		tree-based methods. However, in a boosted model the learning processes is additive in a forward step-wise
@@ -55,8 +62,7 @@
 
 	<li><em>SVC</em> and <em>SVR</em> represent Support Vector Machine classifiers and regressors. Only a linear kernel
 		is enabled in <em>r.learn.ml</em> because the use of non-linear kernels are too slow for most remote sensing and
-		spatial analysis
-		datasets, which consist of large numbers of samples.</li>
+		spatial analysis datasets, which consist of large numbers of samples.</li>
 
 	<li><em>MLPClassifier</em> and <em>MLPRegressor</em> provide access to a multi-layer perceptron algorithm for
 		classification or regression.</li>
@@ -65,8 +71,8 @@
 <h3>Hyperparameters</h3>
 
 <p>The Estimator settings tab provides access to the most pertinent parameters that affect the previously described
-	algorithms. The scikit-learn estimator defaults are generally supplied, and some of these parameters can be tuning
-	using a grid-search by inputting multiple parameter settings as a comma-separated list. The grid search is performed
+	algorithms. The scikit-learn estimator defaults are generally supplied, and these parameters can be tuned
+	using a grid-search by inputting multiple comma-separated parameters. The grid search is performed
 	using a 2-fold cross validation. This tuning can also be accomplished simultaneously with nested cross-validation by
 	settings the <em>cv</em> option to &gt 1. The parameters consist of:</p>
 
@@ -94,8 +100,7 @@
 		the ensemble tree-based models (random forests and gradient boosting), and can be considered to control the
 		degree of correlation between the trees.</li>
 
-	<li><em>min_samples_split</em> and <em>min_samples_leaf</em> control the number of samples required to split a node
-		or form a leaf node, respectively, in the tree-based models.</li>
+	<li><em>min_samples_leaf</em> controls the number of samples required to form a leaf node in the tree-based models.</li>
 
 	<li><em>learning_rate</em> and <em>subsample</em> apply only to gradient boosting algorithms. <em>learning_rate</em>
 		shrinks the contribution of each tree, and <em>subsample</em> is the
@@ -162,13 +167,6 @@
 			HistGradientBoostingRegressor</td>
 	</tr>
 	<tr>
-		<td>min_samples_split</td>
-		<td>The number of samples required to form a leaf node</td>
-		<td>RandomForestClassifier, RandomForestRegressor, ExtraTreesClassifier, ExtraTreesRegressor,
-			GradientBoostingClassifier, GradientBoostingRegressor, HistGradientBoostingClassifier,
-			HistGradientBoostingRegressor</td>
-	</tr>
-	<tr>
 		<td>learning_rate</td>
 		<td>Shrinkage parameter to control the contribution of each tree</td>
 		<td>GradientBoostingClassifier, GradientBoostingRegressor, HistGradientBoostingClassifier,
@@ -181,25 +179,6 @@
 	</tr>
 </table>
 
-<h3>Feature Importances</h3>
-
-<p>In addition to model fitting and prediction, feature importances can be generated using the <em>-f</em> flag. The
-	feature importances method uses a permutation-based method can be applied to all of the estimators. The feature
-	importances represent the average decrease in performance of each variable when permuted. For binary
-	classifications, the AUC is used as the metric. Multiclass classifications use accuracy, and regressions use R2.</p>
-
-<h3>Cross Validation</h3>
-
-<p>Cross validation can be performed by setting the <em>cv</em> parameters to &gt 1. Cross-validation is performed using
-	stratified k-folds for classification and k-folds for regression. Several global and per-class accuracy measures are
-	produced depending on whether the
-	response variable is binary or multiclass, or the classifier is for regression or classification. Cross-validation
-	can also be performed in groups by supplying a raster containing the group_ids of the partitions using the
-	<em>group_raster</em> option. In this case, training samples with the same group id as set by the group_raster will
-	never be split between training and test partitions during cross-validation. This can reduce problems with overly
-	optimistic cross-validation scores if the training data are strongly spatially correlated, i.e. the training data
-	represent rasterized polygons.</p>
-
 <h3>Preprocessing</h3>
 
 <p>Although tree-based classifiers are insensitive to the scaling of the input data, other classifiers such as linear
@@ -209,21 +188,44 @@
 	training data. Using the <em>-b</em> flag balances the training data by weighting of the minority classes relative
 	to the majority class. This does not apply to the Naive Bayes or LinearDiscriminantAnalysis classifiers.</p>
 
-<p>Non-ordinal, categorical predictors are not specifically recognized by scikit-learn. Some classifiers are not very
-	sensitive to this (i.e. decision trees) but generally, categorical predictors need to be converted to a suite of
-	binary using onehot encoding (i.e. where each value in a categorical raster is parsed into a separate binary grid).
-	Entering the names of the categorical rasters in the imagery group in the <em>categorymaps</em> option will cause
-	onehot encoding to be performed on the fly during training and prediction.</p>
+<p><em>r.learn.train</em> does not specifically recognize raster predictors that represent non-ordinal, categorical
+	values, for example if using a landcover map as a predictor. Predictive performances maybe improved if the
+	categories in these maps are split into a series of binary maps before training.</p>
 
-<p>For convenience when repeatly training models on the same data, the training data can be saved to a csv file using
-	the <em>save_training</em> option. This data can then be loaded into subsequent classification runs, saving time by
-	avoiding the need to repeatedly query the predictors.</p>
+<h3>Feature Importances</h3>
+
+<p>In addition to model fitting and prediction, feature importances can be generated using the <b>-f</b> flag. The
+	feature importances method uses a permutation-based method can be applied to all the estimators. The feature
+	importances represent the average decrease in performance of each variable when permuted. For binary
+	classifications, the AUC is used as the metric. Multiclass classifications use accuracy, and regressions use R2.</p>
+
+<h3>Feature Selection</h3>
+
+<p>Feature importances can also be used for feature selection to improve model performance using the <b>-i</b> flag.
+	Using this option will cause only the user-defined percentile of top-scoring features to be retained for model
+	training. The percentile can be set using the <em>percentile</em> parameter, and it can be tuned using multiple
+	comma-separated values like any other hyperparameter.</p>
+
+<h3>Cross Validation</h3>
+
+<p>Cross validation can be performed by setting the <em>cv</em> parameters to &gt 1. Cross-validation is performed using
+	stratified k-folds for classification and k-folds for regression. Several global and per-class accuracy measures are
+	produced depending on whether the response variable is binary or multiclass, or the classifier is for regression or
+	classification. Cross-validation can also be performed in groups by supplying a raster containing the group_ids of
+	the partitions using the <em>group_raster</em> option. In this case, training samples with the same group id as set
+	by the group_raster will never be split between training and test partitions during cross-validation. This can
+	reduce problems with overly optimistic cross-validation scores if the training data are strongly spatially
+	correlated, i.e. the training data represent rasterized polygons.</p>
 
 <h2>NOTES</h2>
 
 <p>Many of the estimators involve a random process which can causes a small amount of variation in the
 	classification/regression results and and feature importances. To enable reproducible results, a seed is supplied to
 	the estimator. This can be changed using the <em>randst</em> parameter.</p>
+
+<p>For convenience when repeatedly training models on the same data, the training data can be saved to a csv file using
+	the <em>save_training</em> option. This data can then imported into subsequent classification runs, saving time by
+	avoiding the need to repeatedly query the predictors.</p>
 
 <h2>EXAMPLE</h2>
 

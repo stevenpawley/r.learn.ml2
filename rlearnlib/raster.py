@@ -2,6 +2,7 @@
 import os
 from subprocess import PIPE
 from copy import deepcopy
+import re
 
 import grass.script as gs
 import numpy as np
@@ -793,15 +794,19 @@ class RasterStack(StatisticsMixin):
     @staticmethod
     def _grass_sql_dtype_to_numpy(dtype):
 
+        dtype = re.sub(r'\([^)]*\)', '', dtype)
+        dtype = dtype.lower()
+
         grass_vector_dtypes = {
             "integer": np.int64,
             "double precision": np.float64,
             "real": np.float32,
             "text": pd.StringDtype(),
+            "varchar": pd.StringDtype(),
             "date": pd.DatetimeIndex,
         }
 
-        return grass_vector_dtypes[dtype.lower()]
+        return grass_vector_dtypes[dtype]
 
     def extract_points(self, vect_name, fields, na_rm=True, as_df=False):
         """Samples a list of GRASS rasters using a point dataset.
