@@ -1,5 +1,3 @@
-
-
 try:
     from collections.abc import Mapping
 except ImportError:
@@ -7,6 +5,7 @@ except ImportError:
 
 from collections import OrderedDict
 import raster
+
 
 class _LocIndexer(Mapping):
     """
@@ -30,9 +29,9 @@ class _LocIndexer(Mapping):
         if isinstance(keys, str):
             selected = self._dict[keys]
         else:
-            selected = [self._dict[i] for i in keys]    
+            selected = [self._dict[i] for i in keys]
         return selected
-    
+
     def __str__(self):
         return str(self._dict)
 
@@ -111,28 +110,28 @@ class _ILocIndexer(object):
         -------
         value
         """
-        
+
         if isinstance(index, int):
             key = list(self._index.keys())[index]
             selected = self._index[key]
-        
+
         if isinstance(index, slice):
             start = index.start
             stop = index.stop
-            
+
             if start is None:
                 start = 0
-            
+
             if stop is None:
                 stop = self.parent.count
-            
+
             index = list(range(start, stop))
-        
+
         if isinstance(index, (list, tuple)):
             key = []
             for i in index:
                 key.append(list(self._index.keys())[i])
             selected = [self._index[k] for k in key]
             selected = raster.RasterStack([i.fullname() for i in selected])
-        
+
         return selected

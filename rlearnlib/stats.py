@@ -71,7 +71,9 @@ class StatisticsMixin(object):
 
         return regr
 
-    def multiple_regression(self, xs, y, estimates=None, residuals=None, overwrite=False):
+    def multiple_regression(
+        self, xs, y, estimates=None, residuals=None, overwrite=False
+    ):
         """
         Simple wrapper around the GRASS GIS module r.regression.multi
         
