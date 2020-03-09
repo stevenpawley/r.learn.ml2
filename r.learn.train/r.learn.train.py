@@ -557,7 +557,7 @@ def main():
             gs.fatal(
                 "Output of cross-validation predictions requires cross-validation cv > 1"
             )
-        if not os.path_exists(os.path.dirname(preds_file)):
+        if not os.path.exists(os.path.dirname(preds_file)):
             gs.fatal("Directory for output file {} does not exist".format(preds_file))
 
     # define RasterStack -----------------------------------------------------------------------------------------------
