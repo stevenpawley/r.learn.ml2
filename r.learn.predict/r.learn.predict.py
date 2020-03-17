@@ -83,7 +83,6 @@ if path is None:
 sys.path.append(path)
 
 from raster import RasterStack
-from utils import create_permutation_scorer
 
 
 def string_to_rules(string):

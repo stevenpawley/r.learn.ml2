@@ -323,15 +323,6 @@ def scoring_metrics(mode):
     return (scoring, search_scorer)
 
 
-def create_permutation_scorer(base_estimator, scoring, X, y):
-    """Generate a permutation score function using an estimator"""
-    from sklearn.inspection import permutation_importance
-    base_estimator = deepcopy(base_estimator)
-    base_estimator.fit(X, y)
-    scores = permutation_importance(base_estimator, X, y, scoring=scoring)
-    return scores["importances_mean"]
-
-
 def save_training_data(file, X, y, cat, class_labels=None, groups=None, names=None):
     """
     Saves any extracted training data to a csv file.

@@ -213,23 +213,6 @@
 #% guisection: Estimator settings
 #%end
 
-#%option
-#% key: percentile
-#% type: integer
-#% label: The percentile of top-scoring features to retain in feature selection
-#% description: The percentile of top-scoring features to retain in feature selection
-#% answer: 10
-#% multiple: yes
-#% guisection: Estimator settings
-#%end
-
-#%flag
-#% key: i
-#% label: Perform permutation feature selection before model fitting
-#% description: Perform permutation feature selection before model fitted
-#% guisection: Estimator settings
-#%end
-
 #%option G_OPT_R_INPUT
 #% key: group_raster
 #% label: Custom group ids for training samples from GRASS raster
@@ -346,7 +329,6 @@ import re
 import sys
 import warnings
 from copy import deepcopy
-from functools import partial
 
 import grass.script as gs
 import numpy as np
@@ -365,7 +347,6 @@ from utils import (
     option_to_list,
     scoring_metrics,
     check_class_weights,
-    create_permutation_scorer
 )
 from raster import RasterStack
 
@@ -489,12 +470,11 @@ def main():
         "max_features": options["max_features"],
         "n_neighbors": options["n_neighbors"],
         "weights": options["weights"],
-        "hidden_layer_sizes": options["hidden_units"]
+        "hidden_layer_sizes": options["hidden_units"],
     }
     cv = int(options["cv"])
     group_raster = options["group_raster"]
     importances = flags["f"]
-    feature_selection = flags["i"]
     preds_file = options["preds_file"]
     classif_file = options["classif_file"]
     fimp_file = options["fimp_file"]
@@ -614,7 +594,9 @@ def main():
             )
 
         if save_training != "":
-            save_training_data(save_training, X, y, cat, class_labels, group_id, stack.names)
+            save_training_data(
+                save_training, X, y, cat, class_labels, group_id, stack.names
+            )
 
     # cross validation settings ----------------------------------------------------------------------------------------
     # inner resampling method (cv=2)
@@ -661,31 +643,6 @@ def main():
         param_grid = wrap_named_step(param_grid)
         fit_params = wrap_named_step(fit_params)
 
-    # feature selection wrapper ----------------------------------------------------------------------------------------
-    if feature_selection is True:
-        from sklearn.feature_selection import SelectPercentile
-
-        permutation_scorer = partial(
-            create_permutation_scorer, estimator, search_scorer
-        )
-        estimator = Pipeline([
-            ("selection", SelectPercentile(score_func=permutation_scorer)),
-            ("estimator", estimator),
-        ])
-
-        param_grid = wrap_named_step(param_grid)
-        fit_params = wrap_named_step(fit_params)
-        param_grid['selection__percentile'] = [int(i) for i in options["percentile"].split(',')]
-
-    if any(param_grid) is True:
-        estimator = GridSearchCV(
-            estimator=estimator,
-            param_grid=param_grid,
-            scoring=search_scorer,
-            n_jobs=n_jobs,
-            cv=inner,
-        )
-
     # estimator training -----------------------------------------------------------------------------------------------
     gs.message(os.linesep)
     gs.message(("Fitting model using " + model_name))
@@ -702,7 +659,7 @@ def main():
         gs.message("Best parameters:")
 
         optimal_pars = [
-            (k.replace('estimator__', '').replace('selection__', '') + ' = ' + str(v))
+            (k.replace("estimator__", "").replace("selection__", "") + " = " + str(v))
             for (k, v) in estimator.best_params_.items()
         ]
 

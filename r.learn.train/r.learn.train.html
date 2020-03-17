@@ -199,13 +199,6 @@
 	importances represent the average decrease in performance of each variable when permuted. For binary
 	classifications, the AUC is used as the metric. Multiclass classifications use accuracy, and regressions use R2.</p>
 
-<h3>Feature Selection</h3>
-
-<p>Feature importances can also be used for feature selection to improve model performance using the <b>-i</b> flag.
-	Using this option will cause only the user-defined percentile of top-scoring features to be retained for model
-	training. The percentile can be set using the <em>percentile</em> parameter, and it can be tuned using multiple
-	comma-separated values like any other hyperparameter.</p>
-
 <h3>Cross Validation</h3>
 
 <p>Cross validation can be performed by setting the <em>cv</em> parameters to &gt 1. Cross-validation is performed using
