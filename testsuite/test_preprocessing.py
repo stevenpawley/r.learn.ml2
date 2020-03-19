@@ -83,7 +83,7 @@ class TestPreprocessing(TestCase):
             pass
             
     def test_onehot(self):
-        """Checks that onehot encoding performs correctly"""
+        """Checks that onehot encoding execution passes"""
                 
         # test r.learn.train using pixels
         self.assertModule(
@@ -106,6 +106,54 @@ class TestPreprocessing(TestCase):
         )
         self.assertRasterExists(self.output, msg="Output was not created")
 
+    def test_standardization(self):
+        """Checks that standardization execution passes"""
+                
+        # test r.learn.train using pixels
+        self.assertModule(
+            "r.learn.train",
+            group=self.group,
+            training_map=self.labelled_pixels,
+            model_name="RandomForestClassifier",
+            n_estimators=100,
+            save_model=self.model_file,
+            flags="s"
+        )
+        self.assertFileExists(filename=self.model_file)
+        
+        # test prediction exists
+        self.assertModule(
+            "r.learn.predict",
+            group=self.group,
+            load_model=self.model_file,
+            output=self.output
+        )
+        self.assertRasterExists(self.output, msg="Output was not created")
+
+    def test_ohe_standardization(self):
+        """Checks that standardization execution passes"""
+                
+        # test r.learn.train using pixels
+        self.assertModule(
+            "r.learn.train",
+            group=self.group,
+            training_map=self.labelled_pixels,
+            model_name="RandomForestClassifier",
+            n_estimators=100,
+            save_model=self.model_file,
+            category_maps=self.geology,
+            flags="s"
+        )
+        self.assertFileExists(filename=self.model_file)
+        
+        # test prediction exists
+        self.assertModule(
+            "r.learn.predict",
+            group=self.group,
+            load_model=self.model_file,
+            output=self.output
+        )
+        self.assertRasterExists(self.output, msg="Output was not created")
 
 if __name__ == "__main__":
     test()

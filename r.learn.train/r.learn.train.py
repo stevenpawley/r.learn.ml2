@@ -678,7 +678,8 @@ def main():
             remainder="passthrough",
             transformers=[
                 ("onehot", enc, stack.categorical),
-                ("scaling", scaler, ~stack.categorical),
+                ("scaling", scaler, np.setxor1d(
+                    range(stack.count), stack.categorical).astype('int')),
             ],
         )
 
