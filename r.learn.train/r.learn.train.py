@@ -330,7 +330,6 @@
 #% required: training_map,training_points,load_training
 #% exclusive: training_map,training_points,load_training
 #% exclusive: load_training,save_training
-#% requires: fimp_file,f
 #% requires: training_points,field
 #%end
 
@@ -537,18 +536,15 @@ def main():
             gs.fatal("Directory for output file {} does not exist".format(classif_file))
 
     # feature importance file selected but no cross-validation scheme used
-    if not os.path.exists(os.path.dirname(fimp_file)):
-        gs.fatal("Directory for output file {} does not exist".format(fimp_file))
-    
     if importances:
         if sklearn.__version__ < "0.22":
             gs.fatal("Feature importances calculation requires scikit-learn version >= 0.22")
 
-    # if fimp_file:
-    #     if importances is False:
-    #         gs.fatal('Output of feature importance requires the "f" flag to be set')
-    #     if not os.path.exists(os.path.dirname(fimp_file)):
-    #         gs.fatal("Directory for output file {} does not exist".format(fimp_file))
+    if fimp_file:
+        if importances is False:
+            gs.fatal('Output of feature importance requires the "f" flag to be set')
+        if not os.path.exists(os.path.dirname(fimp_file)):
+            gs.fatal("Directory for output file {} does not exist".format(fimp_file))
 
     # predictions file selected but no cross-validation scheme used
     if preds_file:

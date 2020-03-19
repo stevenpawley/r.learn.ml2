@@ -22,17 +22,17 @@ from grass.gunittest.case import TestCase
 from grass.gunittest.main import test
 
 
-class TestRLearnMl(TestCase):
+class TestExecution(TestCase):
     """Test learning and prediction using r.learn.ml"""
 
     # Raster maps be used as inputs (they exist in the NC SPM sample location)
-    classif_map = "landclass96"
-    band1 = "lsat7_2002_10"
-    band2 = "lsat7_2002_20"
-    band3 = "lsat7_2002_30"
-    band4 = "lsat7_2002_40"
-    band5 = "lsat7_2002_50"
-    band7 = "lsat7_2002_70"
+    classif_map = "landclass96@PERMANENT"
+    band1 = "lsat7_2002_10@PERMANENT"
+    band2 = "lsat7_2002_20@PERMANENT"
+    band3 = "lsat7_2002_30@PERMANENT"
+    band4 = "lsat7_2002_40@PERMANENT"
+    band5 = "lsat7_2002_50@PERMANENT"
+    band7 = "lsat7_2002_70@PERMANENT"
     
     # Data that is generated and is required for the tests
     output = "classification_result"
