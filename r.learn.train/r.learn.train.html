@@ -188,9 +188,10 @@
 	training data. Using the <em>-b</em> flag balances the training data by weighting of the minority classes relative
 	to the majority class. This does not apply to the Naive Bayes or LinearDiscriminantAnalysis classifiers.</p>
 
-<p><em>r.learn.train</em> does not specifically recognize raster predictors that represent non-ordinal, categorical
-	values, for example if using a landcover map as a predictor. Predictive performances maybe improved if the
-	categories in these maps are split into a series of binary maps before training.</p>
+<p>Scikit learn does not specifically recognize raster predictors that represent non-ordinal, categorical
+	values, for example if using a landcover map as a predictor. Predictive performances may be improved if the
+	categories in these maps are one-hot encoded before training. The parameter <em>categorical_maps</em> can be used to
+	select rasters that in contained within the imagery group to apply one-hot encoding before training.</p>
 
 <h3>Feature Importances</h3>
 
