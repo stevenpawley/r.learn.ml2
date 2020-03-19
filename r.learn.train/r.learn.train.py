@@ -253,6 +253,15 @@
 #% guisection: Cross validation
 #%end
 
+#%option G_OPT_R_INPUT
+#% key: category_maps
+#% required: no
+#% multiple: yes
+#% label: Names of categorical rasters within the imagery group
+#% description: Names of categorical rasters within the imagery group that will be one-hot encoded. Leave empty if none.
+#% guisection: Optional
+#%end
+
 #%option G_OPT_F_OUTPUT
 #% key: fimp_file
 #% label: Save feature importances to csv
@@ -321,6 +330,8 @@
 #% required: training_map,training_points,load_training
 #% exclusive: training_map,training_points,load_training
 #% exclusive: load_training,save_training
+#% requires: fimp_file,f
+#% requires: training_points,field
 #%end
 
 import atexit
@@ -434,11 +445,11 @@ def main():
     try:
         import sklearn
 
-        if sklearn.__version__ < "0.22":
-            gs.fatal("Package python3-scikit-learn 0.18 or newer is not installed")
+        if sklearn.__version__ < "0.20":
+            gs.fatal("Package python3-scikit-learn 0.20 or newer is not installed")
 
     except ImportError:
-        gs.fatal("Package python3-scikit-learn 0.22 or newer is not installed")
+        gs.fatal("Package python3-scikit-learn 0.20 or newer is not installed")
 
     try:
         import pandas as pd
@@ -485,6 +496,7 @@ def main():
     save_training = options["save_training"]
     n_jobs = int(options["n_jobs"])
     balance = flags["b"]
+    category_maps = option_to_list(options["category_maps"])
 
     # define estimator -------------------------------------------------------------------------------------------------
     hyperparams, param_grid = process_param_grid(hyperparams)
@@ -500,8 +512,8 @@ def main():
     scoring, search_scorer = scoring_metrics(mode)
 
     # checks of input options ------------------------------------------------------------------------------------------
-    if training_points != "" and field == "":
-        gs.fatal("No attribute column specified for training points")
+    # if training_points != "" and field == "":
+    #     gs.fatal("No attribute column specified for training points")
 
     if (
         mode == "classification"
@@ -525,11 +537,18 @@ def main():
             gs.fatal("Directory for output file {} does not exist".format(classif_file))
 
     # feature importance file selected but no cross-validation scheme used
-    if fimp_file:
-        if importances is False:
-            gs.fatal('Output of feature importance requires the "f" flag to be set')
-        if not os.path.exists(os.path.dirname(fimp_file)):
-            gs.fatal("Directory for output file {} does not exist".format(fimp_file))
+    if not os.path.exists(os.path.dirname(fimp_file)):
+        gs.fatal("Directory for output file {} does not exist".format(fimp_file))
+    
+    if importances:
+        if sklearn.__version__ < "0.22":
+            gs.fatal("Feature importances calculation requires scikit-learn version >= 0.22")
+
+    # if fimp_file:
+    #     if importances is False:
+    #         gs.fatal('Output of feature importance requires the "f" flag to be set')
+    #     if not os.path.exists(os.path.dirname(fimp_file)):
+    #         gs.fatal("Directory for output file {} does not exist".format(fimp_file))
 
     # predictions file selected but no cross-validation scheme used
     if preds_file:
@@ -542,6 +561,9 @@ def main():
 
     # define RasterStack -----------------------------------------------------------------------------------------------
     stack = RasterStack(group=group)
+
+    if category_maps is not None:
+        stack.categorical = category_maps
 
     # extract training data --------------------------------------------------------------------------------------------
     if load_training != "":
@@ -634,12 +656,39 @@ def main():
 
     # preprocessing ----------------------------------------------------------------------------------------------------
     from sklearn.pipeline import Pipeline
-    from sklearn.preprocessing import StandardScaler
+    from sklearn.compose import ColumnTransformer
+    from sklearn.preprocessing import StandardScaler, OneHotEncoder
 
     # standardization
-    if norm_data is True:
+    if norm_data is True and category_maps is None:
         scaler = StandardScaler()
-        estimator = Pipeline([("preprocessing", scaler), ("estimator", estimator)])
+        trans = ColumnTransformer(
+            remainder="passthrough",
+            transformers=[("scaling", scaler, np.arange(0, stack.count))],
+        )
+
+    # one-hot encoding
+    elif norm_data is False and category_maps is not None:
+        enc = OneHotEncoder(handle_unknown="ignore", sparse=False)
+        trans = ColumnTransformer(
+            remainder="passthrough", transformers=[("onehot", enc, stack.categorical)]
+        )
+
+    # standardization and one-hot encoding
+    elif norm_data is True and category_maps is not None:
+        scaler = StandardScaler()
+        enc = OneHotEncoder(handle_unknown="ignore", sparse=False)
+        trans = ColumnTransformer(
+            remainder="passthrough",
+            transformers=[
+                ("onehot", enc, stack.categorical),
+                ("scaling", scaler, ~stack.categorical),
+            ],
+        )
+
+    # combine transformers
+    if norm_data is True or category_maps is not None:
+        estimator = Pipeline([("preprocessing", trans), ("estimator", estimator)])
         param_grid = wrap_named_step(param_grid)
         fit_params = wrap_named_step(fit_params)
 
