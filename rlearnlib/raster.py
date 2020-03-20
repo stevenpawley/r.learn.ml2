@@ -308,7 +308,7 @@ class RasterStack(StatisticsMixin):
             new_raster = RasterStack(rasters=[i for i in subset_names])
 
             return new_raster
-
+    
     def read(self, row=None, rows=None):
         """Read data from RasterStack as a masked 3D numpy array
         
