@@ -297,7 +297,7 @@ class RasterStack(StatisticsMixin):
 
             return new_raster
 
-    def read(self, row=None, rows=None, bbox=None):
+    def read(self, row=None, rows=None):
         """Read data from RasterStack as a masked 3D numpy array.
         
         Notes
@@ -308,9 +308,6 @@ class RasterStack(StatisticsMixin):
         
         If the rows parameter is used, then a range of rows from (start_row, end_row) is read
         into a 3d numpy array.
-
-        If the bbox parameter is used, then a bbox is read into a 3d numpy array. Note that this
-        temporarily changes the GRASS region settings.
 
         If no additional arguments are supplied, then all of the maps within the RasterStack are
         read into a 3d numpy array (obeying the GRASS region settings).
@@ -323,9 +320,6 @@ class RasterStack(StatisticsMixin):
         rows : tuple (opt)
             Tuple of integers representing the start and end numbers of rows to
             read as a single block of rows.
-
-        bbox : bbox object.
-            bbox to read raster within.
 
         Returns
         -------
@@ -343,12 +337,6 @@ class RasterStack(StatisticsMixin):
             height = abs(row_stop - row_start)
             shape = (self.count, height, width)
             rowincrs = [i for i in range(row_start, row_stop)]
-        elif bbox:
-            gs.use_temp_region()
-            reg.set_bbox(bbox)
-            reg.write()
-            reg.set_raster_region()
-            shape = (self.count, reg.rows, reg.cols)
         elif row:
             row_start = row
             row_stop = row + 1
@@ -377,10 +365,6 @@ class RasterStack(StatisticsMixin):
             mask_arr = np.empty(data.shape, dtype="bool")
             mask_arr[:] = False
             data.mask = mask_arr
-
-        # restore region
-        if bbox:
-            gs.del_temp_region()
 
         return data
 
