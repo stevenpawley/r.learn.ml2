@@ -336,45 +336,38 @@ class RasterStack(StatisticsMixin):
 
         reg = Region()
 
-        # create numpy array to receive data based on row/window/dataset size
+        # create numpy array to receive data
         if rows:
             row_start, row_stop = rows
             width = reg.cols
             height = abs(row_stop - row_start)
             shape = (self.count, height, width)
-
+            rowincrs = [i for i in range(row_start, row_stop)]
         elif bbox:
-            old_reg = deepcopy(reg)
+            gs.use_temp_region()
             reg.set_bbox(bbox)
             reg.write()
             reg.set_raster_region()
             shape = (self.count, reg.rows, reg.cols)
-
         elif row:
             row_start = row
             row_stop = row + 1
             height = 1
             shape = (self.count, height, reg.cols)
-
+            rowincrs = [i for i in range(row_start, row_stop)]
         else:
             shape = (self.count, reg.rows, reg.cols)
 
         data = np.zeros(shape)
 
-        if row or rows:
-            rowincrs = [i for i in range(row_start, row_stop)]
-
         # read from each RasterRow object
         for band, (name, src) in enumerate(self.layers.items()):
-            try:
-                with RasterRow(src.fullname()) as f:
-                    if row or rows:
-                        for i, row in enumerate(rowincrs):
-                            data[band, i, :] = f[row]
-                    else:
-                        data[band, :, :] = np.asarray(f)
-            except:
-                gs.fatal("Cannot read from raster {0}".format(src.fullname))
+            with RasterRow(src.fullname()) as f:
+                if row or rows:
+                    for i, row in enumerate(rowincrs):
+                        data[band, i, :] = f[row]
+                else:
+                    data[band, :, :] = np.asarray(f)
 
         # mask array
         data = np.ma.masked_equal(data, self._cell_nodata)
@@ -387,8 +380,7 @@ class RasterStack(StatisticsMixin):
 
         # restore region
         if bbox:
-            old_reg.write()
-            old_reg.set_raster_region()
+            gs.del_temp_region()
 
         return data
 
@@ -794,7 +786,7 @@ class RasterStack(StatisticsMixin):
     @staticmethod
     def _grass_sql_dtype_to_numpy(dtype):
 
-        dtype = re.sub(r'\([^)]*\)', '', dtype)
+        dtype = re.sub(r"\([^)]*\)", "", dtype)
         dtype = dtype.lower()
 
         grass_vector_dtypes = {

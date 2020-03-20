@@ -129,7 +129,7 @@ def main():
 
     # perform raster prediction
     region = Region()
-    row_incr = math.floor(chunksize / region.cols)
+    row_incr = math.ceil(chunksize / region.cols)
 
     # do not read by increments if increment > n_rows
     if row_incr >= region.rows:
