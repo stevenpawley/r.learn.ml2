@@ -4,7 +4,6 @@ except ImportError:
     from collections import Mapping
 
 from collections import OrderedDict
-import raster
 
 
 class _LocIndexer(Mapping):
@@ -132,6 +131,5 @@ class _ILocIndexer(object):
             for i in index:
                 key.append(list(self._index.keys())[i])
             selected = [self._index[k] for k in key]
-            selected = raster.RasterStack([i.fullname() for i in selected])
 
         return selected
