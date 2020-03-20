@@ -733,7 +733,7 @@ class RasterStack(StatisticsMixin):
 
         return windows
 
-    def extract_pixels(self, response, use_labels=False, as_df=False):
+    def extract_pixels(self, response, use_cats=False, as_df=False):
         """Extract pixel values from a RasterStack using another RasterRow
         object of labelled pixels
         
@@ -742,7 +742,7 @@ class RasterStack(StatisticsMixin):
         response : RasterRow
             RasterRow object containing labelled pixels.
         
-        use_labels : bool (default is False)
+        use_cats : bool (default is False)
             Whether to return pixel values as category labels instead of
             numeric values if the response map has categories assigned to
             it. Note that if some categories are missing in the response
@@ -756,7 +756,7 @@ class RasterStack(StatisticsMixin):
         with RasterRow(response) as src:
             labels = src.cats
 
-        if "" in labels.labels() or use_labels is False:
+        if "" in labels.labels() or use_cats is False:
             labels = None
 
         # extract predictor values at pixel locations
@@ -782,18 +782,18 @@ class RasterStack(StatisticsMixin):
 
         cat = np.arange(0, y.shape[0])
 
-        if labels and use_labels is True:
+        if labels and use_cats is True:
             enc = CategoryEncoder()
             enc.fit(labels)
             y = enc.transform(y)            
 
         if as_df is True:
-            data = pd.DataFrame(
-                data=np.column_stack((cat, data)),
+            df = pd.DataFrame(
+                data=np.column_stack((cat, y, X)),
                 columns=["cat"] + [response] + self.names,
             )
 
-            return data
+            return df
 
         return X, y, cat
 
