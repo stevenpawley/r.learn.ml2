@@ -838,6 +838,11 @@ class RasterStack(StatisticsMixin):
             df = pd.DataFrame(points.table_to_dict()).transpose()
             df_cols = points.table.columns
             df_colnames = [name for (name, dtype) in df_cols.items()]
+
+            for i in fields:
+                if i not in df_colnames:
+                    gs.fatal(i + " not present in the attribute table")
+
             df = df.rename(
                 columns={old: new for old, new in zip(df.columns, df_colnames)}
             )

@@ -689,6 +689,15 @@ def main():
         param_grid = wrap_named_step(param_grid)
         fit_params = wrap_named_step(fit_params)
 
+    if any(param_grid) is True:
+        estimator = GridSearchCV(
+            estimator=estimator,
+            param_grid=param_grid,
+            scoring=search_scorer,
+            n_jobs=n_jobs,
+            cv=inner,
+        )
+
     # estimator training -----------------------------------------------------------------------------------------------
     gs.message(os.linesep)
     gs.message(("Fitting model using " + model_name))
