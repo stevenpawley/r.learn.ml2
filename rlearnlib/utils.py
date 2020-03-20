@@ -395,25 +395,23 @@ def load_training_data(file):
     groups (1d numpy array): Numpy array of group labels, or None
     """
 
-    training_data = np.loadtxt(file, delimiter=",", skiprows=1)
-    n_cols = training_data.shape[1]
-    last_Xcol = n_cols - 3
+    import pandas as pd
 
-    # group_ids stored in last column
-    groups = training_data[:, -1]
+    training_data = pd.read_csv(file)
+
+    groups = training_data.groups.values
 
     if bool(np.isnan(groups).all()) is True:
         groups = None
 
-    # class labels stored in 2nd last column
-    class_labels = training_data[:, -2]
+    class_labels = training_data.class_labels.values
 
-    # cat stored in 3rd last column
-    cat = training_data[:, -3]
+    if bool(np.isnan(class_labels).all()) is True:
+        class_labels = None
 
-    # response stored in 4th last column
-    y = training_data[:, -4]
-    X = training_data[:, 0:last_Xcol]
+    cat = training_data.cat.values.astype(np.int64)
+    y = training_data.response.values
+    X = training_data.drop(columns=["groups", "class_labels", "cat", "response"]).values
 
     return (X, y, cat, class_labels, groups)
 

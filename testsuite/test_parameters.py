@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 
 """
-MODULE:    Test of r.learn.train
+MODULE:    Test of r.learn.ml
 
 AUTHOR(S): Steven Pawley <dr.stevenpawley gmail com>
 
-PURPOSE:   Test of r.learn.train
+PURPOSE:   Test of r.learn.ml for valid parameters
 
 COPYRIGHT: (C) 2020 by Steven Pawley and the GRASS Development Team
 
@@ -22,9 +22,10 @@ from grass.gunittest.case import TestCase
 from grass.gunittest.main import test
 
 
-class TestExecution(TestCase):
-    """Test learning and prediction using r.learn.ml"""
+class TestParameters(TestCase):
+    """Test for valid parameters using r.learn.ml"""
 
+    # input rasters
     band1 = "lsat7_2002_10@PERMANENT"
     band2 = "lsat7_2002_20@PERMANENT"
     band3 = "lsat7_2002_30@PERMANENT"
@@ -33,11 +34,19 @@ class TestExecution(TestCase):
     band7 = "lsat7_2002_70@PERMANENT"
     classif_map = "landclass96@PERMANENT"
 
-    output = "classification_result"
-    model_file = tempfile.NamedTemporaryFile(suffix=".gz").name
+    # imagery group created during test
     group = "predictors"
+
+    # training data created during test
     labelled_pixels = "training_pixels"
     labelled_points = "training_points"
+
+    # raster map created as output during test
+    output = "classification_result"
+
+    # files created during test
+    model_file = tempfile.NamedTemporaryFile(suffix=".gz").name
+    training_file = tempfile.NamedTemporaryFile(suffix=".gz").name
 
     @classmethod
     def setUpClass(cls):
@@ -85,46 +94,10 @@ class TestExecution(TestCase):
         except FileNotFoundError:
             pass
 
-    def test_output_created_labelled_pixels(self):
-        """Checks that the output is created"""
-        self.assertModule(
-            "r.learn.train",
-            group=self.group,
-            training_map=self.labelled_pixels,
-            model_name="RandomForestClassifier",
-            n_estimators=100,
-            save_model=self.model_file,
-        )
-        self.assertFileExists(filename=self.model_file)
-
-        self.assertModule(
-            "r.learn.predict",
-            group=self.group,
-            load_model=self.model_file,
-            output=self.output,
-        )
-        self.assertRasterExists(self.output, msg="Output was not created")
-
-    def test_output_created_prediction_points(self):
-        """Checks that output is created"""
-        self.assertModule(
-            "r.learn.train",
-            group=self.group,
-            training_points=self.labelled_points,
-            field="value",
-            model_name="RandomForestClassifier",
-            n_estimators=100,
-            save_model=self.model_file,
-        )
-        self.assertFileExists(filename=self.model_file)
-
-        self.assertModule(
-            "r.learn.predict",
-            group=self.group,
-            load_model=self.model_file,
-            output=self.output,
-        )
-        self.assertRasterExists(self.output, msg="Output was not created")
+        try:
+            os.remove(self.training_file)
+        except FileNotFoundError:
+            pass
 
     def test_train_missing_parameter(self):
         """Check that module fails when parameters are missing"""

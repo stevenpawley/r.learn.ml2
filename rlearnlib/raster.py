@@ -66,9 +66,14 @@ class RasterStack(StatisticsMixin):
             gs.fatal('arguments "rasters" and "group" are mutually exclusive')
 
         if group:
-            map_list = im.group(group=group, flags=["l", "g"], quiet=True, stdout_=PIPE)
-            rasters = map_list.outputs.stdout.split(os.linesep)[:-1]
+            groups_in_mapset = g.list(type="group", stdout_=PIPE).outputs.stdout.strip().split(os.linesep)
 
+            if group not in groups_in_mapset:
+                gs.fatal("Imagery group {group} does not exist".format(group=group))  
+            else:
+                map_list = im.group(group=group, flags=["l", "g"], quiet=True, stdout_=PIPE)
+                rasters = map_list.outputs.stdout.strip().split(os.linesep)
+        
         self.layers = rasters  # call property
 
     def __getitem__(self, label):
@@ -742,7 +747,7 @@ class RasterStack(StatisticsMixin):
             stdout_=PIPE,
         ).outputs.stdout
 
-        data = data.split(os.linesep)[:-1]
+        data = data.strip().split(os.linesep)
         data = [i.split("|") for i in data]
         data = np.asarray(data).astype("float32")
 
@@ -870,7 +875,7 @@ class RasterStack(StatisticsMixin):
                     stdout_=PIPE,
                 ).outputs.stdout
 
-                rast_data = rast_data.split(os.linesep)[:-1]
+                rast_data = rast_data.strip().split(os.linesep)
 
                 src.open("r")
 
