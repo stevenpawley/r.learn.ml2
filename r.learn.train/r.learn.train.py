@@ -341,6 +341,7 @@ import warnings
 from copy import deepcopy
 
 import grass.script as gs
+from grass.pygrass.raster import RasterRow
 import numpy as np
 from grass.script.utils import get_lib_path
 
@@ -511,9 +512,6 @@ def main():
     scoring, search_scorer = scoring_metrics(mode)
 
     # checks of input options ------------------------------------------------------------------------------------------
-    # if training_points != "" and field == "":
-    #     gs.fatal("No attribute column specified for training points")
-
     if (
         mode == "classification"
         and balance is True
@@ -564,6 +562,12 @@ def main():
     # extract training data --------------------------------------------------------------------------------------------
     if load_training != "":
         X, y, cat, class_labels, group_id = load_training_data(load_training)
+
+        if class_labels is not None:
+            a = pd.DataFrame({"response": y, "labels": class_labels})
+            a = a.drop_duplicates().values
+            class_labels = {k: v for (k, v) in a}
+
     else:
         gs.message("Extracting training data")
 
@@ -572,20 +576,25 @@ def main():
 
         if training_map != "":
             X, y, cat = stack.extract_pixels(training_map)
+            y = y.flatten()
+
+            with RasterRow(training_map) as src:
+                class_labels = {v: k for (k, v, m) in src.cats}
+
+                if "" in class_labels.values():
+                    class_labels = None
+
         elif training_points != "":
             X, y, cat = stack.extract_points(training_points, field)
-
-        y = y.flatten()  # reshape to 1 dimension
-
-        # label encoding
-        if y.dtype in (np.object_, np.object):
-            from sklearn.preprocessing import LabelEncoder
-
-            le = LabelEncoder()
-            y = le.fit_transform(y)
-            class_labels = le.classes_
-        else:
-            class_labels = None
+            y = y.flatten()
+            
+            if y.dtype in (np.object_, np.object):
+                from sklearn.preprocessing import LabelEncoder
+                le = LabelEncoder()
+                y = le.fit_transform(y)
+                class_labels = {k: v for (k, v) in enumerate(le.classes_)}
+            else:
+                class_labels = None
 
         # take group id from last column and remove from predictors
         if group_raster != "":

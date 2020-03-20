@@ -5,7 +5,7 @@ MODULE:    Test of r.learn.ml
 
 AUTHOR(S): Steven Pawley <dr.stevenpawley gmail com>
 
-PURPOSE:   Test of r.learn.ml for classification
+PURPOSE:   Test of r.learn.ml for regression
 
 COPYRIGHT: (C) 2020 by Steven Pawley and the GRASS Development Team
 
@@ -22,8 +22,8 @@ from grass.gunittest.case import TestCase
 from grass.gunittest.main import test
 
 
-class TestClassification(TestCase):
-    """Test classification and prediction using r.learn.ml"""
+class TestRegression(TestCase):
+    """Test regression and prediction using r.learn.ml"""
 
     # input rasters
     band1 = "lsat7_2002_10@PERMANENT"
@@ -32,17 +32,16 @@ class TestClassification(TestCase):
     band4 = "lsat7_2002_40@PERMANENT"
     band5 = "lsat7_2002_50@PERMANENT"
     band7 = "lsat7_2002_70@PERMANENT"
-    classif_map = "landclass96@PERMANENT"
+    input_map = "elev_ned_30m@PERMANENT"
 
     # imagery group created during test
     group = "predictors"
 
     # training data created during test
-    labelled_pixels = "training_pixels"
-    labelled_points = "training_points"
+    training_points = "training_points"
 
     # raster map created as output during test
-    output = "classification_result"
+    output = "regression_result"
 
     # files created during test
     model_file = tempfile.NamedTemporaryFile(suffix=".gz").name
@@ -56,7 +55,7 @@ class TestClassification(TestCase):
         categorical map to use as training pixels/points
         """
         cls.use_temp_region()
-        cls.runModule("g.region", raster=cls.classif_map)
+        cls.runModule("g.region", raster=cls.input_map)
         cls.runModule(
             "i.group",
             group=cls.group,
@@ -64,24 +63,17 @@ class TestClassification(TestCase):
         )
         cls.runModule(
             "r.random",
-            input=cls.classif_map,
+            input=cls.input_map,
             npoints=1000,
-            raster=cls.labelled_pixels,
+            vector=cls.training_points,
             seed=1234,
-        )
-        cls.runModule(
-            "r.to.vect",
-            input=cls.labelled_pixels,
-            output=cls.labelled_points,
-            type="point",
         )
 
     @classmethod
     def tearDownClass(cls):
         """Remove the temporary region (and anything else we created)"""
         cls.del_temp_region()
-        cls.runModule("g.remove", flags="f", type="raster", name=cls.labelled_pixels)
-        cls.runModule("g.remove", flags="f", type="vector", name=cls.labelled_points)
+        cls.runModule("g.remove", flags="f", type="vector", name=cls.training_points)
         cls.runModule("g.remove", flags="f", type="group", name=cls.group)
 
     def tearDown(self):
@@ -99,53 +91,14 @@ class TestClassification(TestCase):
         except FileNotFoundError:
             pass
 
-    def test_output_created_labelled_pixels(self):
+    def test_output_created_regression(self):
         """Checks that the output is created"""
-        # train model
         self.assertModule(
             "r.learn.train",
             group=self.group,
-            training_map=self.labelled_pixels,
-            model_name="RandomForestClassifier",
-            n_estimators=100,
-            save_model=self.model_file,
-        )
-        self.assertFileExists(filename=self.model_file)
-
-        # create prediction is created
-        self.assertModule(
-            "r.learn.predict",
-            group=self.group,
-            load_model=self.model_file,
-            output=self.output,
-        )
-        self.assertRasterExists(self.output, msg="Output was not created")
-
-        # check categories were applied to classification map
-        cats_input = gs.parse_command(
-            "r.category",
-            map=self.labelled_pixels,
-            separator=":",
-            delimiter=":"
-        )
-        
-        cats_result = gs.parse_command(
-            "r.category",
-            map=self.output,
-            separator=":",
-            delimiter=":"
-        )
-
-        self.assertEqual(cats_input, cats_result)
-
-    def test_output_created_prediction_points(self):
-        """Checks that output is created"""
-        self.assertModule(
-            "r.learn.train",
-            group=self.group,
-            training_points=self.labelled_points,
+            training_points=self.training_points,
             field="value",
-            model_name="RandomForestClassifier",
+            model_name="RandomForestRegressor",
             n_estimators=100,
             save_model=self.model_file,
         )
@@ -166,9 +119,9 @@ class TestClassification(TestCase):
         self.assertModule(
             "r.learn.train",
             group=self.group,
-            training_points=self.labelled_points,
+            training_points=self.training_points,
             field="value",
-            model_name="RandomForestClassifier",
+            model_name="RandomForestRegressor",
             save_training=self.training_file,
             n_estimators=100,
             save_model=self.model_file,
@@ -180,7 +133,7 @@ class TestClassification(TestCase):
         self.assertModule(
             "r.learn.train",
             group=self.group,
-            model_name="RandomForestClassifier",
+            model_name="RandomForestRegressor",
             load_training=self.training_file,
             n_estimators=100,
             save_model=self.model_file,

@@ -347,8 +347,8 @@ def save_training_data(file, X, y, cat, class_labels=None, groups=None, names=No
     cat : ndarray
         1d numpy array of GRASS key column
 
-    class_labels : ndarray
-        List or array of class labels
+    class_labels : dict
+        Dict of class index values as keys, and class labels as values
 
     groups :ndarray (opt)
         1d numpy array containing group labels
@@ -356,26 +356,32 @@ def save_training_data(file, X, y, cat, class_labels=None, groups=None, names=No
     names : list (opt)
         Optionally pass names of features to use as a heading
     """
+    import pandas as pd
+
     if isinstance(names, str):
         names = list(names)
 
     if names is None:
         names = ["feature" + str(i) for i in range(X.shape[1])]
 
-    names = ",".join(names + ["response", "cat", "class_labels", "groups"])
-
     # if there are no group labels, create a nan filled array
     if groups is None:
         groups = np.empty((y.shape[0]))
         groups[:] = np.nan
 
-    if class_labels is None:
-        class_labels = np.empty((y.shape[0]))
-        class_labels[:] = np.nan
+    if class_labels:
+        labels_arr = np.asarray([class_labels[yi] for yi in y]).astype(np.object)
+    else:
+        labels_arr = np.empty((y.shape[0]))
+        labels_arr[:] = np.nan
 
-    training_data = np.column_stack([X, y, cat, class_labels, groups])
+    df = pd.DataFrame(X, columns=names)
+    df["response"] = y
+    df["cat"] = cat
+    df["class_labels"] = labels_arr
+    df["groups"] = groups
 
-    np.savetxt(fname=file, X=training_data, delimiter=",", header=names, comments="")
+    df.to_csv(file, index=False)
 
 
 def load_training_data(file):
@@ -401,12 +407,12 @@ def load_training_data(file):
 
     groups = training_data.groups.values
 
-    if bool(np.isnan(groups).all()) is True:
+    if bool(pd.isna(groups).all()) is True:
         groups = None
 
     class_labels = training_data.class_labels.values
 
-    if bool(np.isnan(class_labels).all()) is True:
+    if bool(pd.isna(class_labels).all()) is True:
         class_labels = None
 
     cat = training_data.cat.values.astype(np.int64)

@@ -99,11 +99,11 @@ def main():
         import sklearn
         import joblib
 
-        if sklearn.__version__ < "0.22":
-            gs.fatal("Scikit learn 0.22 or newer is required")
+        if sklearn.__version__ < "0.20":
+            gs.fatal("Scikit learn 0.20 or newer is required")
 
     except ImportError:
-        gs.fatal("Scikit learn 0.22 or newer is not installed")
+        gs.fatal("Scikit learn 0.20 or newer is not installed")
 
     # parser options
     group = options["group"]
@@ -157,16 +157,13 @@ def main():
 
     # assign categories for classification map
     if class_labels is not None:
-        class_values = np.arange(0, len(class_labels), dtype=np.int)
-
         rules = []
 
-        for val, lab in zip(class_values, class_labels):
+        for val, lab in class_labels.items():
             rules.append(",".join([str(val), lab]))
 
         rules = "\n".join(rules)
         rules_file = string_to_rules(rules)
-
         r.category(map=output, rules=rules_file, separator="comma")
 
 
