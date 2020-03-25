@@ -453,12 +453,9 @@ def main():
 
     try:
         import pandas as pd
-
-        if pd.__version__ < "1.0":
-            gs.fatal("Package python3-pandas 1.0 or newer is not installed")
-
+        
     except ImportError:
-        gs.fatal("Package python3-pandas 1.0 or newer is not installed")
+        gs.fatal("Package python3-pandas 0.25 or newer is not installed")
 
     # parser options ---------------------------------------------------------------------------------------------------
     group = options["group"]

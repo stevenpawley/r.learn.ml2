@@ -5,7 +5,7 @@ include $(MODULE_TOPDIR)/include/Make/Python.make
 
 MODULES = __init__ stats utils indexing raster transformers
 
-ETCDIR = $(ETC)/r.learn.ml
+ETCDIR = $(ETC)/r.learn.ml2
 
 PYFILES := $(patsubst %,$(ETCDIR)/%.py,$(MODULES))
 PYCFILES := $(patsubst %,$(ETCDIR)/%.pyc,$(MODULES))
