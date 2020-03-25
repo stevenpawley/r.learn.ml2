@@ -2,8 +2,6 @@
 
 This is python module for applying scikit-learn machine learning models to GRASS GIS spatial data.
 
-For more information read the documents page at: https://rlearnml2.readthedocs.io/en/latest/
-
 * [Description](README.md#description)
 * [Installation](README.md#installation)
 * [Example usage as a GRASS addon](README.md#Example-using-GRASS-GIS-command-line)
@@ -60,7 +58,7 @@ i.colors.enhance red=lsat7_2000_70 green=lsat7_2000_50 blue=lsat7_2000_20
 d.rgb red=lsat7_2000_70 green=lsat7_2000_50 blue=lsat7_2000_20
 ```
 
-![example](https://github.com/stevenpawley/r.learn.ml2/blob/master/r.learn.ml2/lsat7_2000_b742.png)
+![example](https://github.com/stevenpawley/rlearnml2/blob/master/r.learn.ml2/lsat7_2000_b742.png)
 
 Generate some training pixels from an older (1996) land cover classification:
 
@@ -88,7 +86,7 @@ r.colors rf_classification raster=training_pixels
 d.rast rf_classification
 ```
 
-![example](https://github.com/stevenpawley/r.learn.ml2/blob/master/r.learn.ml2/rfclassification.png)
+![example](https://github.com/stevenpawley/rlearnml2/blob/master/r.learn.ml2/rfclassification.png)
 
 ## Example using Python scripting
 

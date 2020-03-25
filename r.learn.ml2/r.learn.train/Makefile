@@ -1,6 +1,6 @@
 MODULE_TOPDIR = ../..
 
-PGM = rlearn_predict
+PGM = r.learn.train
 
 include $(MODULE_TOPDIR)/include/Make/Script.make
 
