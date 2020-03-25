@@ -8,7 +8,8 @@ Welcome to r.learn.ml2's documentation!
 
 .. toctree::
    :maxdepth: 2
-   
+
+   contents
    introduction
 
 
