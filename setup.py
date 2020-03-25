@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     # package metadata
-    name="r.learn.ml",
+    name="r.learn.ml2",
     version="0.0.1",
     author="Steven Pawley",
     author_email="steven.pawley@gmail.com",
