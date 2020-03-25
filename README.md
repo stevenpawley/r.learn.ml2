@@ -97,7 +97,7 @@ sys.path.append(path)
 from raster import RasterStack
 ```
 
-### The `RasterStack` class
+### The RasterStack class
 
 #### Initiation
 
@@ -113,9 +113,9 @@ Alternatively, it can be initiated using a GRASS imagery group:
 stack = RasterStack(group="landsat_2002")
 ```
 
-#### Indexing of `RasterStack` objects
+#### Indexing of RasterStack objects
 
-Individual rasters within a RasterStack can be accessed using several methods:
+Individual rasters within a `RasterStack` can be accessed using several methods:
 
 ```
 stack.names  # returns names of rasters
@@ -133,7 +133,7 @@ stack.loc["lsat7_2002_10"]  # access using a label, or list of labels
 stack["lsat7_2002_10"]
 ```
 
-Individual rasters within the RasterStack can be set using:
+Individual rasters within the `RasterStack` can be set using:
 
 ```
 from grass.pygrass.raster import RasterRow
