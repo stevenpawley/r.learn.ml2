@@ -11,6 +11,7 @@ Welcome to r.learn.ml2's documentation!
 
    contents
    introduction
+   modules
 
 
 Indices and tables
