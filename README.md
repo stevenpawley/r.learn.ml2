@@ -31,18 +31,10 @@ The GRASS GIS module requires two additional python packages, scikit-learn (http
 
 This repository is the primary location for development of the modules behind the r.learn.ml2 addon. This repository contains the newest and experimental features, and also provides documentation for using the modules within the add-on for scripting.
 
-The development version can be installed using two methods, either as a standard python package (within the same python environment as GRASS GIS), or using `g.extension` on Linux and Mac OS.
-
-Installation as a python package from github:
+The development version can also be installed using `g.extension` on Linux and Mac OS.
 
 ```
-pip install https://github.com/stevenpawley/rlearnml2
-```
-
-Installation from within GRASS GIS using `g.extension` (only possible on Linux or Mac OS):
-
-```
-g.extension extension=r.learn.ml2 url=https://github.com/stevenpawley/rlearnml2/rlearnml2
+g.extension extension=r.learn.ml2 url=https://github.com/stevenpawley/r.learn.ml2
 ```
 
 ## Example using GRASS GIS command line
@@ -58,7 +50,7 @@ i.colors.enhance red=lsat7_2000_70 green=lsat7_2000_50 blue=lsat7_2000_20
 d.rgb red=lsat7_2000_70 green=lsat7_2000_50 blue=lsat7_2000_20
 ```
 
-![example](https://github.com/stevenpawley/rlearnml2/blob/master/r.learn.ml2/lsat7_2000_b742.png)
+![example](https://github.com/stevenpawley/r.learn.ml2/blob/master/r.learn.ml2/lsat7_2000_b742.png)
 
 Generate some training pixels from an older (1996) land cover classification:
 
