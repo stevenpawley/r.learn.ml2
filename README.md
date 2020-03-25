@@ -42,7 +42,7 @@ Installation from within GRASS GIS using `g.extension` (only possible on Linux o
 g.extension extension=r.learn.ml2 url=https://github.com/stevenpawley/r.learn.ml2/r.learn.ml2
 ```
 
-## Example
+## Example using GRASS GIS command line
 
 Here we are going to use the GRASS GIS sample North Carolina data set as a basis to perform a landsat classification. We are going to classify a Landsat 7 scene from 2000, using training information from an older (1996) land cover dataset.
 
@@ -84,3 +84,20 @@ d.rast rf_classification
 ```
 
 ![example](https://github.com/stevenpawley/r.learn.ml2/blob/master/r.learn.ml2/rfclassification.png)
+
+## Example using Python scripting
+
+Providing that r.learn.ml2 is installed as a GRASS GIS addon, the python modules can be imported directly using:
+
+```
+from grass.script.utils import get_lib_path
+path = get_lib_path("r.learn.ml2")
+sys.path.append(path)
+from raster import RasterStack
+```
+
+If the development version from this repository is installed as a python package (i.e. using pip) then it can also be imported in the usual way:
+
+```
+from rlearnml2 import RasterStack
+```
