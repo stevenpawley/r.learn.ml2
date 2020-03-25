@@ -20,7 +20,8 @@ setup(
         'scipy>1.0.0',
         'pandas>=0.20',
         'matplotlib>=2.2.4',
-        'sklearn'],
+        'sklearn'
+    ],
     python_requires='>=3.5',
 
     # testing

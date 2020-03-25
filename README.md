@@ -38,13 +38,13 @@ The development version can be installed using two methods, either as a standard
 Installation as a python package from github:
 
 ```
-pip install https://github.com/stevenpawley/r.learn.ml2
+pip install https://github.com/stevenpawley/rlearnml2
 ```
 
 Installation from within GRASS GIS using `g.extension` (only possible on Linux or Mac OS):
 
 ```
-g.extension extension=r.learn.ml2 url=https://github.com/stevenpawley/r.learn.ml2/r.learn.ml2
+g.extension extension=r.learn.ml2 url=https://github.com/stevenpawley/rlearnml2/rlearnml2
 ```
 
 ## Example using GRASS GIS command line
