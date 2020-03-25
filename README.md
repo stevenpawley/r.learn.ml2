@@ -7,7 +7,7 @@ For more information read the documents page at: https://rlearnml2.readthedocs.i
 * [Description](README.md#description)
 * [Installation](README.md#installation)
 * [Example usage as a GRASS addon](README.md#Example-using-GRASS-GIS-command-line)
-* [Example usage as a Python package](README.md#Example-using-Python-scripting)
+* [Example using Python scripting](README.md#Example-using-Python-scripting)
 
 ## Description
 
@@ -99,10 +99,4 @@ from grass.script.utils import get_lib_path
 path = get_lib_path("r.learn.ml2")
 sys.path.append(path)
 from raster import RasterStack
-```
-
-If the development version from this repository is installed as a python package (i.e. using pip) then it can also be imported in the usual way:
-
-```
-from rlearnml2 import RasterStack
 ```
