@@ -17,7 +17,7 @@
 
 # -- Project information -----------------------------------------------------
 
-project = 'r.learn.ml2'
+project = 'rlearnml2'
 copyright = '2020, Steven Pawley'
 author = 'Steven Pawley'
 

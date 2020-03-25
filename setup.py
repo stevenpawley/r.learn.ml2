@@ -2,14 +2,14 @@ from setuptools import setup, find_packages
 
 setup(
     # package metadata
-    name="r.learn.ml2",
+    name="rlearnml2",
     version="0.0.1",
     author="Steven Pawley",
     author_email="steven.pawley@gmail.com",
     description=("Machine learning in GRASS GIS"),
     license="GNU",
     keywords="GIS",
-    url="https://github.com/stevenpawley/r.learn.ml2",
+    url="https://github.com/stevenpawley/rlearnml2",
 
     # files/directories to be installed with package
     packages=find_packages(),
