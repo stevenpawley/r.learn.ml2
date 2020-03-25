@@ -61,7 +61,7 @@ Now display the results:
 
 ```
 # copy color scheme from landclass training map to result
-r.colors rf_classification raster=landclass96_roi
+r.colors rf_classification raster=training_pixels
 
 # plot the results
 d.rast rf_classification
