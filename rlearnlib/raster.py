@@ -16,9 +16,9 @@ from grass.pygrass.raster import RasterRow, numpy2raster
 from grass.pygrass.raster.buffer import Buffer
 from grass.pygrass.utils import get_mapset_raster
 from grass.pygrass.vector import VectorTopo
-from .indexing import _LocIndexer, _ILocIndexer
-from .stats import StatisticsMixin
-from .transformers import CategoryEncoder
+from indexing import _LocIndexer, _ILocIndexer
+from stats import StatisticsMixin
+from transformers import CategoryEncoder
 
 
 class RasterStack(StatisticsMixin):
