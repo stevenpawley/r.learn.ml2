@@ -96,24 +96,21 @@ class RasterStack(StatisticsMixin):
             
         Returns
         -------
-        A single grass.pygrass.raster.RasterRow object, or a RasterStack if 
-        multiple labels are selected.
+        RasterStack
         """
 
         if isinstance(label, str):
-            selected = self.loc[label]
+            label = [label]
 
-        else:
-            selected = []
-            for i in label:
-                if i in self.names is False:
-                    raise KeyError("layername not present in Raster object")
-                else:
-                    selected.append(self.loc[i].fullname())
+        selected = []
+        
+        for i in label:
+            if i in self.names is False:
+                raise KeyError("layername not present in Raster object")
+            else:
+                selected.append(self.loc[i].fullname())
 
-            selected = RasterStack(selected)
-
-        return selected
+        return RasterStack(selected)
 
     def __setitem__(self, key, value):
         """Replace a RasterLayer within the Raster object with a new 
@@ -131,8 +128,6 @@ class RasterStack(StatisticsMixin):
         """
 
         self.loc[key] = value
-        self.iloc[self.names.index(key)] = value
-        setattr(self, key, value)
 
     def __iter__(self):
         """Iterate over grass.pygrass.raster.RasterRow objects"""
@@ -143,8 +138,8 @@ class RasterStack(StatisticsMixin):
         """Return the names of the grass.pygrass.raster.RasterRow objects in 
         the RasterStack
         """
-
         names = []
+        
         for src in self.loc.values():
             names.append(src.fullname())
 

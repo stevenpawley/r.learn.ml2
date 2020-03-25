@@ -82,14 +82,74 @@ d.rast rf_classification
 
 ## Example using Python scripting
 
+### Importing the modules
+
 Providing that r.learn.ml2 is installed as a GRASS GIS addon, the python modules can be imported directly using:
 
 ```
 # add the r.learn.ml2 addon to path
+import sys
 from grass.script.utils import get_lib_path
 path = get_lib_path("r.learn.ml2")
 sys.path.append(path)
 
 # import the addon's modules
 from raster import RasterStack
+```
+
+### The `RasterStack` class
+
+#### Initiation
+
+The main module in r.learn.ml2 is the `RasterStack` class. A RasterStack can be initiated using a list of GRASS GIS raster maps:
+
+```
+stack = RasterStack(rasters=["lsat7_2002_10", "lsat7_2002_20", "lsat7_2002_30", "lsat7_2002_40"])
+```
+
+Alternatively, it can be initiated using a GRASS imagery group:
+
+```
+stack = RasterStack(group="landsat_2002")
+```
+
+#### Indexing of `RasterStack` objects
+
+Individual rasters within a RasterStack can be accessed using several methods:
+
+```
+stack.names  # returns names of rasters
+
+# methods that return RasterRow objects
+stack.lsat7_2002_10  # use attribute name directly
+
+stack.iloc[0]  # access by integer index
+
+stack.iloc[0:2]  # access using slices
+
+stack.loc["lsat7_2002_10"]  # access using a label, or list of labels
+
+# methods that always return a new RasterStack object
+stack["lsat7_2002_10"]
+```
+
+Individual rasters within the RasterStack can be set using:
+
+```
+from grass.pygrass.raster import RasterRow
+
+# set layers using a single index
+stack.iloc[0] = RasterRow("lsat7_2002_61") 
+
+# set layers using a multiple indexes
+stack.iloc[[0, 1]] = [RasterRow("lsat7_2002_70"), RasterRow("lsat7_2002_80")]
+
+# set layers using a slice of indexes
+stack.iloc[0:2] = [RasterRow("lsat7_2002_70"), RasterRow("lsat7_2002_80")]
+
+# set layers using a single label
+stack.loc["lsat7_2002_10"] = RasterRow("lsat7_2002_61")
+
+# set layers using multiple labels
+stack.loc[["lsat7_2002_10", "lsat7_2002_20"]] = [RasterRow("lsat7_2002_61"), RasterRow("lsat7_2002_62")]
 ```
