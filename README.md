@@ -2,6 +2,8 @@
 
 This is python module for applying scikit-learn machine learning models to GRASS GIS spatial data.
 
+For more information read the documents page at: https://r.learn.ml2.readthedocs.io/en/latest/
+
 ## Description
 
 r.learn.ml2 represents a front-end to the scikit learn python package. The module enables scikit-learn classification and regression models to be applied to GRASS GIS rasters that are stored as part of an imagery group.
