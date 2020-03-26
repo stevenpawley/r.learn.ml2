@@ -6,7 +6,7 @@ A RasterStack enables a collection of RasterRow objects to be bundled into a mul
 - [Parameters](#Parameters)
 - [Atttributes](#Attributes)
 - [Methods](#Methods)
-     - [RasterStack.names](#'RasterStack.names')
+     - [RasterStack.names](#RasterStacknames)
 
 
 ## Parameters
