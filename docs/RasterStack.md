@@ -1,7 +1,14 @@
 # RasterStack
  
 A RasterStack enables a collection of RasterRow objects to be bundled into a multi-layer RasterStack object
-         
+
+## Contents
+- [Parameters](#Parameters)
+- [Atttributes](#Attributes)
+- [Methods](#Methods)
+     - [names](#RasterStack.names)
+
+
 ## Parameters
   rasters : list, str
       
