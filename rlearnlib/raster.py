@@ -243,8 +243,8 @@ class RasterStack(StatisticsMixin):
 
         Parameters
         ----------
-        other : str or list
-            Name of GRASS GIS raster, or list of names.
+        other : str, or list
+            Name of GRASS GIS rasters, or a list of names.
         
         in_place : bool (opt). Default is True
             Whether to change the Raster object in-place or leave original and
@@ -533,6 +533,10 @@ class RasterStack(StatisticsMixin):
             
         overwrite : bool (opt). Default is False
             Option to overwrite an existing raster.
+        
+        Returns
+        -------
+        RasterStack
         """
 
         reg = Region()
@@ -566,7 +570,7 @@ class RasterStack(StatisticsMixin):
             func = self._predfun_multioutput
 
         if len(indexes) > 1:
-            self._predict_multi(
+            result_stack = self._predict_multi(
                 estimator, reg, indexes, indexes, height, func, output, overwrite
             )
         else:
@@ -600,12 +604,12 @@ class RasterStack(StatisticsMixin):
                 numpy2raster(
                     result[0, :, :], mtype=mtype, rastname=output, overwrite=overwrite
                 )
+            
+            result_stack = RasterStack(output)
 
-        return None
+        return result_stack
 
-    def predict_proba(
-        self, estimator, output, class_labels=None, height=None, overwrite=False
-    ):
+    def predict_proba(self, estimator, output, class_labels=None, height=None, overwrite=False):
         """Prediction method for RasterStack class
 
         Parameters
@@ -627,6 +631,10 @@ class RasterStack(StatisticsMixin):
             
         overwrite : bool (opt). Default is False
             Option to overwrite an existing raster(s)
+        
+        Returns
+        -------
+        RasterStack
         """
         reg = Region()
         func = self._prob_fun
@@ -636,7 +644,7 @@ class RasterStack(StatisticsMixin):
             test_window = list(self.row_windows(height=1))[0]
             img = self.read(rows=test_window)
             result = func(img, estimator)
-            class_labels = range(result.shape[2])
+            class_labels = range(result.shape[0])
 
         # only output positive class if result is binary
         if len(class_labels) == 2:
@@ -645,16 +653,13 @@ class RasterStack(StatisticsMixin):
             indexes = np.arange(0, len(class_labels), 1)
 
         # create and open rasters for writing
-        self._predict_multi(
+        result_stack = self._predict_multi(
             estimator, reg, indexes, class_labels, height, func, output, overwrite
         )
 
-        return None
+        return result_stack
 
-    def _predict_multi(
-        self, estimator, region, indexes, class_labels, height, func, output, overwrite
-    ):
-
+    def _predict_multi(self, estimator, region, indexes, class_labels, height, func, output, overwrite):
         # create and open rasters for writing if incremental reading
         if height is not None:
             dst = []
@@ -705,6 +710,8 @@ class RasterStack(StatisticsMixin):
             if height is not None:
                 for i in dst:
                     i.close()
+        
+        return RasterStack([i.name for i in dst])
 
     def row_windows(self, region=None, height=25):
         """Returns an generator for row increments, tuple (startrow, endrow)
@@ -728,19 +735,19 @@ class RasterStack(StatisticsMixin):
 
         return windows
 
-    def extract_pixels(self, response, use_cats=False, as_df=False):
+    def extract_pixels(self, rast_name, use_cats=False, as_df=False):
         """Extract pixel values from a RasterStack using another RasterRow
         object of labelled pixels
         
         Parameters
         ----------
-        response : RasterRow
-            RasterRow object containing labelled pixels.
+        rast_name : str
+            Name of GRASS GIS raster map containing labelled pixels.
         
         use_cats : bool (default is False)
             Whether to return pixel values as category labels instead of
-            numeric values if the response map has categories assigned to
-            it. Note that if some categories are missing in the response
+            numeric values if the rast_name map has categories assigned to
+            it. Note that if some categories are missing in the rast_name
             map then this option is ignored.
         
         as_df : bool (opt). Default is False
@@ -748,7 +755,7 @@ class RasterStack(StatisticsMixin):
             DataFrame.
         """
         # check for categories in labelled pixel map
-        with RasterRow(response) as src:
+        with RasterRow(rast_name) as src:
             labels = src.cats
 
         if "" in labels.labels() or use_cats is False:
@@ -756,7 +763,7 @@ class RasterStack(StatisticsMixin):
 
         # extract predictor values at pixel locations
         data = r.stats(
-            input=[response] + self.names,
+            input=[rast_name] + self.names,
             separator="pipe",
             flags=["n", "g"],
             stdout_=PIPE,
@@ -785,7 +792,7 @@ class RasterStack(StatisticsMixin):
         if as_df is True:
             df = pd.DataFrame(
                 data=np.column_stack((cat, y, X)),
-                columns=["cat"] + [response] + self.names,
+                columns=["cat"] + [rast_name] + self.names,
             )
 
             return df
@@ -801,7 +808,7 @@ class RasterStack(StatisticsMixin):
             Name of GRASS GIS vector containing point features.
             
         fields : list, str
-            Name of attribute(s) containing the response variable(s).
+            Name of attribute(s) containing the vect_name variable(s).
             
         na_rm : bool (opt). Default is True
             Whether to remove samples containing NaNs.

@@ -5,7 +5,7 @@ This is python module for applying scikit-learn machine learning models to GRASS
 * [Description](README.md#description)
 * [Installation](README.md#installation)
 * [Example usage as a GRASS addon](README.md#Example-using-GRASS-GIS-command-line)
-* [Example using Python scripting](README.md#Example-using-Python-scripting)
+* [Quickstart using Python scripting](README.md#Quickstart-using-Python-scripting)
 
 ## Description
 
@@ -80,7 +80,7 @@ d.rast rf_classification
 
 ![example](https://github.com/stevenpawley/r.learn.ml2/blob/master/rfclassification.png)
 
-## Example using Python scripting
+## Quickstart using Python scripting
 
 ### Importing the modules
 
@@ -160,7 +160,129 @@ Quick views of the values of the rasters within a `RasterStack` object can be ge
 
 ```
 stack = RasterStack(rasters=["lsat7_2002_10", "lsat7_2002_20", "lsat7_2002_30", "lsat7_2002_40"])
+
+# view data from the first 10 rows
 stack.head()
+
+# view data from the last 10 rows
 stack.tail()
+
+# convert raster to pandas dataframe
+stack.to_pandas()
 ```
 
+#### Reading array data from a RasterStack
+
+Data from a RasterStack can be read into a 3D numpy array using the `read` method.
+The data is returned as a masked array with the GRASS GIS null values for each
+raster value masked.
+
+```
+# read all data (obeying the computational window settings)
+stack.read()
+
+# read a single row
+stack.read(row=1)
+
+# read a set of rows in a contiguous interval (start, end)
+stack.read(rows=(1, 10))
+```
+
+#### Extracting data from a RasterStack
+
+Pixel values can be spatially-queried in the RasterStack using either another
+raster containing labelled pixels via the `extract_pixels` method, or a GRASS 
+GIS vector map containing point geomeries using the `extract_points` method.
+Either method can return the extracted data as three numpy arrays, or as a pandas
+dataframe.
+
+
+When extracting data using another raster map, `X` will be a 3D numpy array containing
+the extracted data from the RasterStack, `y` will be a 1D numpy array containing
+the values of the pixels in the labelled pixels map, and `cat` is the index value
+of the pixels.
+
+```
+# extract data using another raster 
+X, y, cat = stack.extract_pixels(response="labelled_pixels")
+
+# extract data using another raster, and returning the GRASS raster categories
+# instead of integer values
+X, y, cat = stack.extract_pixels(response="labelled_pixels", use_cats=True)
+
+# return data as a pandas dataframe
+df = stack.extract_pixels(rast_name="labelled_pixels", as_df=True)
+```
+
+When extracting data using a vector map, the `fields` parameter refers to the 
+name of an attribute, or several attributes in the `vect_name` map to returned
+with the extracted raster data. If several attributes are used the `y` will be 
+a 2D numpy array.
+
+```
+# basic use
+X, y, cat = stack.extract_points(vect_name="points_map", field="slope")
+X, y, cat = stack.extract_points(vect_name="points_map"), field=["slope", "aspect"]
+
+# as pandas
+df = stack.extract_points(vect_name="points_map", field="slope", as_df=True)
+```
+
+By default, rows containing null values in any of the rasters are removed. This can
+be disabled by using `na_rm=False`:
+
+```
+df = stack.extract_points(vect_name="points_map", field="slope", as_df=True, na_rm=True)
+```
+
+#### Applying a machine learning model to data within a RasterStack
+
+Any scikit-learn compatible model that has a `predict` method can be applied to
+the data within a RasterStack. The following provides a brief example within the
+nc_spm_08 sample GRASS location:
+
+```
+from grass.pygrass.modules.shortcuts import raster as r
+
+# generate some training data from another land use map
+r.random(input="landclass96", npoints=1000, raster="training_pixels")
+
+# create a stack of landsat data
+stack = RasterStack(
+    rasters=[
+        "lsat7_2002_10", 
+        "lsat7_2002_20", 
+        "lsat7_2002_30", 
+        "lsat7_2002_40", 
+        "lsat7_2002_50", 
+        "lsat_2002_70"
+    ]
+)
+
+# extract training data
+X, y, cat = stack.extract_pixels(rast_name="training_pixels")
+
+# fit a ml model
+from sklearn.ensemble import RandomForestClassifier
+
+rf = RandomForestClassifier()
+rf.fit(X, y)
+
+# apply fitted model to RasterStack and returns a RasterStack
+preds = stack.predict(
+    estimator=rf,                # fitted model
+    output="rf_classification",  # name of output GRASS raster
+    height=25,                   # number of rows to predict in chunks
+    overwrite=False
+)
+
+probs = stack.predict_proba(
+    estimator=rf,
+    output="rf_classification",
+    height=25,
+    overwrite=False
+)
+```
+
+Multi-target prediction is also allowed for scikit-learn models which accept
+multiple target features
