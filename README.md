@@ -289,4 +289,4 @@ probs = stack.predict_proba(
 ```
 
 Multi-target prediction is also allowed for scikit-learn models which accept
-multiple target features
+multiple target features.
