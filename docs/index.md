@@ -8,6 +8,7 @@ This is python module for applying scikit-learn machine learning models to GRASS
 * [Installation](#installation)
 * [Example usage as a GRASS addon](grass_example.md)
 * [Quickstart using Python scripting](python_quickstart.md)
+* [Modules](modules.md)
 
 ## Description
 
