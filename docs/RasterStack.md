@@ -274,4 +274,19 @@ cat : ndarray
 df : pandas.DataFrame
 
     Extracted raster values as Pandas DataFrame if as_df = True.
-"""
+
+### RasterStack.to_pandas
+
+RasterStack to a pandas.DataFrame
+
+#### Returns
+
+pandas.DataFrame
+
+### RasterStack.head
+
+Show the head (first rows, first columns) or tail (last rows, last columns) of the cells of a Raster object
+
+### RasterStack.tail
+
+Show the head (first rows, first columns) or tail (last rows, last columns) of the cells of a Raster object
