@@ -218,8 +218,6 @@ as_df : bool (opt). Default is False
 
 #### Returns
 
-Either:
-
 X : ndarray
 
     2D numpy array of the extracted pixels values in the raster
@@ -232,8 +230,48 @@ cat : ndarray
 
     1D numpy array of the pixel indices
 
-Or:
+df : pandas.DataFrame
+
+    Pandas dataframe containing the extracted data. Only returned if as_df=True.
+
+### RasterStack.extract_points
+
+Samples a list of GRASS rasters using a point dataset
+
+#### Parameters
+vect_name : str
+
+    Name of GRASS GIS vector containing point features.
+
+fields : list, str
+
+    Name of attribute(s) containing the vect_name variable(s).
+
+na_rm : bool (opt). Default is True
+
+    Whether to remove samples containing NaNs.
+
+as_df : bool (opt). Default is False.
+
+    Whether to return the extracted RasterStack values as a Pandas
+    DataFrame.
+
+#### Returns
+X : ndarray
+
+    2d array containing the extracted raster values with the dimensions
+    ordered by (n_samples, n_features).
+
+y : ndarray
+
+    1d or 2d array of labels with the dimensions ordered by 
+    (n_samples, n_fields).
+
+cat : ndarray
+
+    1d array of category indices of the GRASS vector map.
 
 df : pandas.DataFrame
 
-    Pandas dataframe containing the extracted data
+    Extracted raster values as Pandas DataFrame if as_df = True.
+"""
