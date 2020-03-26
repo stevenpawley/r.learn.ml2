@@ -6,10 +6,10 @@ Documentation at https://stevenpawley.github.io/r.learn.ml2/
 
 ## Contents
 
-* [Description](README.md#description)
-* [Installation](README.md#installation)
-* [Example usage as a GRASS addon](README.md#Example-using-GRASS-GIS-command-line)
-* [Quickstart using Python scripting](README.md#Quickstart-using-Python-scripting)
+* [Description](main.md#description)
+* [Installation](main.md#installation)
+* [Example usage as a GRASS addon](main.md#Example-using-GRASS-GIS-command-line)
+* [Quickstart using Python scripting](main.md#Quickstart-using-Python-scripting)
 
 ## Description
 
