@@ -7,7 +7,17 @@ A RasterStack enables a collection of RasterRow objects to be bundled into a mul
 - [Atttributes](#Attributes)
 - [Methods](#Methods)
      - [RasterStack.names](#RasterStacknames)
-
+     - [RasterStack.append](#RasterStackappend)
+     - [RasterStack.drop](#RasterStackdrop)
+     - [RasterStack.read](#RasterStackread)
+     - [RasterStack.predict](#RasterStackpredict)
+     - [RasterStack.predict_proba](#RasterStackpredict_proba)
+     - [RasterStack.row_windows](#RasterStackrow_windows)
+     - [RasterStack.extract_pixels](#RasterStackextract_pixels)
+     - [RasterStack.extract_points](#RasterStackextract_points)
+     - [RasterStack.to_pandas](#RasterStackto_pandas)
+     - [RasterStack.head](#RasterStackhead)
+     - [RasterStack.tail](#RasterStacktail)
 
 ## Parameters
   rasters : list, str
