@@ -2,6 +2,8 @@
 
 This is python module for applying scikit-learn machine learning models to GRASS GIS spatial data.
 
+Documentation at https://stevenpawley.github.io/r.learn.ml2/
+
 ## Contents
 
 * [Description](README.md#description)
