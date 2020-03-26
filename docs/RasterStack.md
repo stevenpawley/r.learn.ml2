@@ -6,7 +6,7 @@ A RasterStack enables a collection of RasterRow objects to be bundled into a mul
 - [Parameters](#Parameters)
 - [Atttributes](#Attributes)
 - [Methods](#Methods)
-     - [names](#names)
+     - [RasterStack.names](#RasterStack.names)
 
 
 ## Parameters
@@ -46,7 +46,7 @@ A RasterStack enables a collection of RasterRow objects to be bundled into a mul
 
 ## Methods
 
-### names
+### RasterStack.names
 
 Returns the names of the grass.pygrass.raster.RasterRow objects in the RasterStack
 
