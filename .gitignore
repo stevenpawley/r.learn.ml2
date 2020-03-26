@@ -1,7 +1,9 @@
 
 \.idea/r\.learn\.ml\.iml
+\.idea
 
 \.vscode/settings\.json
  
  \.vscode
 *.xml
+*.pyc

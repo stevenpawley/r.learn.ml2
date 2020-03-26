@@ -156,7 +156,7 @@ def main():
         )
 
     # assign categories for classification map
-    if class_labels is not None:
+    if class_labels is not None and prob_only is False:
         rules = []
 
         for val, lab in class_labels.items():
