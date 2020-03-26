@@ -54,7 +54,7 @@ i.colors.enhance red=lsat7_2000_70 green=lsat7_2000_50 blue=lsat7_2000_20
 d.rgb red=lsat7_2000_70 green=lsat7_2000_50 blue=lsat7_2000_20
 ```
 
-![](lsat7_2000_b742.png)
+<img src="lsat7_2000_b742.png">
 
 Generate some training pixels from an older (1996) land cover classification:
 
