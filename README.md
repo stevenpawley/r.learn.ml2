@@ -1,12 +1,12 @@
 # Machine Learning in GRASS GIS using Python (r.learn.ml2)
 
-For documentation https://stevenpawley.github.io/r.learn.ml2/
-
 This is python module for applying scikit-learn machine learning models to GRASS GIS spatial data.
+
+## Contents
 
 * [Description](README.md#description)
 * [Installation](README.md#installation)
-* [Example usage as a GRASS addon](README.md#Example-using-GRASS-GIS-command-line)
+* [Example usage as a GRASS addon](README.md#Example-using-GRASS-GIS-command line)
 * [Quickstart using Python scripting](README.md#Quickstart-using-Python-scripting)
 
 ## Description
