@@ -23,8 +23,8 @@ from transformers import CategoryEncoder
 
 class RasterStack(StatisticsMixin):
     def __init__(self, rasters=None, group=None):
-        """A RasterStack enables a collection of RasterRow objects to be bundled
-        into a multi-layer RasterStack object
+        """A RasterStack enables a collection of raster layers to be bundled
+        into a single RasterStack object
         
         Parameters
         ----------
@@ -41,7 +41,7 @@ class RasterStack(StatisticsMixin):
         Attributes
         ----------
         loc : dict
-            Label-based indexing of RasterRow objects within the RasterStack.
+            Name-based indexing of RasterRow objects within the RasterStack.
         
         iloc : int
             Index-based indexing of RasterRow objects within the RasterStack.
@@ -51,10 +51,6 @@ class RasterStack(StatisticsMixin):
         
         count : int
             Number of RasterRow objects within the RasterStack.
-        
-        categorical : list
-            A list of the names with the RasterStack that represent rasters with categorical
-            values. Used to keep track of indices when using one-hot-encoding.
         """
 
         self.loc = _LocIndexer(self)
@@ -241,9 +237,9 @@ class RasterStack(StatisticsMixin):
         self._categorical_idx = indexes
 
     def append(self, other, in_place=True):
-        """Method to add new RasterRow objects to the stack
+        """Setter method to add new RasterRows to a RasterStack object
         
-        Note that this modifies the RasterStack object in-place
+        Note that this modifies the Raster object in-place
 
         Parameters
         ----------
@@ -310,7 +306,11 @@ class RasterStack(StatisticsMixin):
     
     def read(self, row=None, rows=None):
         """Read data from RasterStack as a masked 3D numpy array
-                
+        
+        Notes
+        -----
+        Read an entire RasterStack into a numpy array
+        
         If the row parameter is used then a single row is read into a 3d numpy array
         
         If the rows parameter is used, then a range of rows from (start_row, end_row) is read
@@ -537,7 +537,6 @@ class RasterStack(StatisticsMixin):
         Returns
         -------
         RasterStack
-            A new RasterStack object containing the predictions.
         """
 
         reg = Region()
@@ -636,7 +635,6 @@ class RasterStack(StatisticsMixin):
         Returns
         -------
         RasterStack
-            A new RasterStack containing the class probability rasters, one raster for each class.
         """
         reg = Region()
         func = self._prob_fun
@@ -725,11 +723,6 @@ class RasterStack(StatisticsMixin):
             
         height : int (opt). Default is 25
             Height of window in number of image rows.
-
-        Returns
-        -------
-        generator
-            A generator that returns (row_start, row_stop) positions for the region.
         """
 
         if region is None:
@@ -760,24 +753,6 @@ class RasterStack(StatisticsMixin):
         as_df : bool (opt). Default is False
             Whether to return the extracted RasterStack pixels as a Pandas
             DataFrame.
-        
-        Returns
-        -------
-        Either:
-
-        X : ndarray
-            2D numpy array of the extracted pixels values in the raster
-        
-        y : ndarray
-            1D numpy array of the labelled pixels in the rast_name map
-    
-        cat : ndarray
-            1D numpy array of the pixel indices
-
-        Or:
-
-        df : pandas.DataFrame
-            Pandas dataframe containing the extracted data
         """
         # check for categories in labelled pixel map
         with RasterRow(rast_name) as src:
@@ -851,9 +826,6 @@ class RasterStack(StatisticsMixin):
         y : ndarray
             1d or 2d array of labels with the dimensions ordered by 
             (n_samples, n_fields).
-        
-        cat : ndarray
-            1d array of category indices of the GRASS vector map.
                 
         df : pandas.DataFrame
             Extracted raster values as Pandas DataFrame if as_df = True.
@@ -948,7 +920,7 @@ class RasterStack(StatisticsMixin):
         return df
 
     def to_pandas(self):
-        """RasterStack to a pandas.DataFrame
+        """RasterStack to pandas DataFrame
         
         Returns
         -------
@@ -981,7 +953,7 @@ class RasterStack(StatisticsMixin):
 
     def head(self):
         """Show the head (first rows, first columns) or tail (last rows, last 
-        columns) of the cells of a Raster object
+        columns) of the cells of a Raster object.
 
         Returns
         -------
