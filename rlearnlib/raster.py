@@ -1,8 +1,6 @@
 #!/usr/bin/env python
 import os
 from subprocess import PIPE
-from copy import deepcopy
-import re
 
 import grass.script as gs
 import numpy as np
@@ -18,10 +16,11 @@ from grass.pygrass.utils import get_mapset_raster
 from grass.pygrass.vector import VectorTopo
 from indexing import _LocIndexer, _ILocIndexer
 from stats import StatisticsMixin
+from plotting import PlottingMixin
 from transformers import CategoryEncoder
 
 
-class RasterStack(StatisticsMixin):
+class RasterStack(StatisticsMixin, PlottingMixin):
     def __init__(self, rasters=None, group=None):
         """A RasterStack enables a collection of raster layers to be bundled
         into a single RasterStack object
@@ -188,11 +187,8 @@ class RasterStack(StatisticsMixin):
 
         # add rasters and metadata to stack
         for name, mapset in zip(raster_names, mapset_names):
-
             with RasterRow(name=name, mapset=mapset) as src:
-
                 if src.exist() is True:
-
                     ras_name = src.name.split("@")[0]  # name sans mapset
                     full_name = src.name_mapset()  # name with mapset
                     valid_name = ras_name.replace(".", "_")
@@ -304,7 +300,7 @@ class RasterStack(StatisticsMixin):
 
             return new_raster
     
-    def read(self, row=None, rows=None):
+    def read(self, index=None, row=None, rows=None):
         """Read data from RasterStack as a masked 3D numpy array
         
         Notes
@@ -321,6 +317,11 @@ class RasterStack(StatisticsMixin):
 
         Parameters
         ----------
+        index : int (opt)
+            An integer representing the index position to read data from a single
+            RasterRow object. Otherwise all RasterRow objects with the `RasterStack`
+            are read.
+
         row : int (opt)
             Integer representing the index of a single row of a raster to read.
 
@@ -336,33 +337,46 @@ class RasterStack(StatisticsMixin):
         """
 
         reg = Region()
+        reg.set_raster_region()
 
         # create numpy array to receive data
+        if index is None:
+            index = np.arange(0, self.count)
+        if isinstance(index, int):
+            index = range(index, index+1)
         if rows:
             row_start, row_stop = rows
             width = reg.cols
             height = abs(row_stop - row_start)
-            shape = (self.count, height, width)
+            shape = (len(index), height, width)
             rowincrs = [i for i in range(row_start, row_stop)]
         elif row:
             row_start = row
             row_stop = row + 1
             height = 1
-            shape = (self.count, height, reg.cols)
+            shape = (len(index), height, reg.cols)
             rowincrs = [i for i in range(row_start, row_stop)]
         else:
-            shape = (self.count, reg.rows, reg.cols)
+            shape = (len(index), reg.rows, reg.cols)
 
         data = np.zeros(shape)
 
         # read from each RasterRow object
-        for band, (name, src) in enumerate(self.layers.items()):
-            with RasterRow(src.fullname()) as f:
+        for n, idx in enumerate(index):
+            with RasterRow(self.iloc[int(idx)].fullname()) as src:
                 if row or rows:
                     for i, row in enumerate(rowincrs):
-                        data[band, i, :] = f[row]
+                        data[n, i, :] = src[row]
                 else:
-                    data[band, :, :] = np.asarray(f)
+                    data[n, :, :] = np.asarray(src)
+
+        # for band, (name, src) in enumerate(self.layers.items()):
+        #     with RasterRow(src.fullname()) as f:
+        #         if row or rows:
+        #             for i, row in enumerate(rowincrs):
+        #                 data[band, i, :] = f[row]
+        #         else:
+        #             data[band, :, :] = np.asarray(f)
 
         # mask array
         data = np.ma.masked_equal(data, self._cell_nodata)
