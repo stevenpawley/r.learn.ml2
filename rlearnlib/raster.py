@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 import os
+import itertools
 from subprocess import PIPE
 
 import grass.script as gs
@@ -14,10 +15,9 @@ from grass.pygrass.raster import RasterRow, numpy2raster
 from grass.pygrass.raster.buffer import Buffer
 from grass.pygrass.utils import get_mapset_raster
 from grass.pygrass.vector import VectorTopo
-from indexing import _LocIndexer, _ILocIndexer
-from stats import StatisticsMixin
-from plotting import PlottingMixin
-from transformers import CategoryEncoder
+from .indexing import _LocIndexer, _ILocIndexer
+from .stats import StatisticsMixin
+from .transformers import CategoryEncoder
 
 
 class RasterStack(StatisticsMixin, PlottingMixin):
@@ -768,6 +768,10 @@ class RasterStack(StatisticsMixin, PlottingMixin):
             Whether to return the extracted RasterStack pixels as a Pandas
             DataFrame.
         """
+        # some checks
+        if RasterRow(rast_name).exist() is False:
+            gs.fatal("The supplied raster does not exist")
+
         # check for categories in labelled pixel map
         with RasterRow(rast_name) as src:
             labels = src.cats
@@ -782,6 +786,9 @@ class RasterStack(StatisticsMixin, PlottingMixin):
             flags=["n", "g"],
             stdout_=PIPE,
         ).outputs.stdout
+
+        if data == "":
+            gs.fatal("The training pixel locations do not spatially intersect any raster datasets")
 
         data = data.strip().split(os.linesep)
         data = [i.split("|") for i in data]
@@ -844,6 +851,9 @@ class RasterStack(StatisticsMixin, PlottingMixin):
         df : pandas.DataFrame
             Extracted raster values as Pandas DataFrame if as_df = True.
         """
+        # some checks
+        if VectorTopo(vect_name).exist() is False:
+            gs.fatal("The supplied vector map does not exist")
 
         if isinstance(fields, str):
             fields = [fields]
@@ -893,6 +903,9 @@ class RasterStack(StatisticsMixin, PlottingMixin):
                     else:
                         nodata = np.nan
                         dtype = np.float32
+
+                    if len(list(itertools.chain(*rast_data))) == 0:
+                        gs.fatal("There are no training point geometries in the supplied vector dataset")
 
                     X = [k.split("|")[1] if k.split("|")[1] != "*" else nodata for k in rast_data]
                     X = np.asarray(X)
