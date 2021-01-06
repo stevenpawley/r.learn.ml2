@@ -3,7 +3,7 @@
 include $(MODULE_TOPDIR)/include/Make/Other.make
 include $(MODULE_TOPDIR)/include/Make/Python.make
 
-MODULES = stats utils indexing raster transformers
+MODULES = plotting stats utils indexing raster transformers
 
 ETCDIR = $(ETC)/r.learn.ml2/rlearnlib
 

@@ -260,21 +260,13 @@ class PlottingMixin(object):
             plt.subplots_adjust(**subplots_kwds)
         
         else:
-            arr = self.iloc[0].read(masked=True)
+            arr = self.read(index=0)
+            arr = arr.squeeze()
             cmap = cmaps[0]
             norm = norms[0]
             axs.set_title(names[0], fontsize=title_fontsize, y=1.00)            
-            im = axs.imshow(
-                arr,
-                extent=[
-                    self.bounds.left,
-                    self.bounds.right,
-                    self.bounds.bottom,
-                    self.bounds.top,
-                ],
-                cmap=cmap,
-                norm=norm,
-            )
+            extent = [reg.west, reg.east, reg.south, reg.north]
+            im = axs.imshow(arr, extent=extent, cmap=cmap, norm=norm)
 
             divider = make_axes_locatable(axs)
 

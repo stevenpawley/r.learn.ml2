@@ -18,6 +18,7 @@ from grass.pygrass.vector import VectorTopo
 from .indexing import _LocIndexer, _ILocIndexer
 from .stats import StatisticsMixin
 from .transformers import CategoryEncoder
+from .plotting import PlottingMixin
 
 
 class RasterStack(StatisticsMixin, PlottingMixin):
