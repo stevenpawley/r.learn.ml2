@@ -1,8 +1,5 @@
-#!/usr/bin/env python
-# -- coding: utf-8 --
-
-"""The statistics module contains simple wrappers around GRASS modules for statistical functions
-on raster maps"""
+"""The statistics module contains simple wrappers around GRASS modules for
+statistical functions on raster maps """
 
 import os
 import numpy as np

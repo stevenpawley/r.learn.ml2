@@ -5,14 +5,8 @@
 Providing that r.learn.ml2 is installed as a GRASS GIS addon, the python modules can be imported directly using:
 
 ```
-# add the r.learn.ml2 addon to path
-import sys
-from grass.script.utils import get_lib_path
-path = get_lib_path("r.learn.ml2")
-sys.path.append(path)
-
 # import the addon's modules
-from raster import RasterStack
+from pygrassml import RasterStack
 ```
 
 ## The RasterStack class
